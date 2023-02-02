@@ -9,33 +9,44 @@ def get_config():
 
     train_dataset = "data/RT100U_processed"
 
-    img_size = (448, 576)
+    raw_img_size = (448, 576)
+    img_size = (128, 128)
+
+    local = True
 
     # Model config
 
     beta_0 = 0.0001
-    beta_t = 0.015
-    timesteps = 500
-    time_emb_dim = 32
+    beta_t = 0.02
+    timesteps = 1000
+    schedule = "cosine"
+    time_emb_dim = 256
+    model_dim = 128
 
     # Train config
 
-    batch_size = 2
+    batch_size = 32
     optimizer = "Adam"
     loss = "MSELoss"
     learning_rate = 0.00001
-    epochs = 200
-    num_workers = 0
+    epochs = 10000
+    num_workers = 32
 
     # Eval config
 
     evaluate_every = 10
 
     random_seed = 1234
-    use_wandb = False
+    use_wandb = True
+
+    if local:
+        use_wandb = False
+        num_workers = 0
+        batch_size = 2
 
     config = {
         "train_dataset": train_dataset,
+        "raw_img_size": raw_img_size,
         "img_size": img_size,
         "batch_size": batch_size,
         "optimizer": optimizer,
@@ -49,7 +60,9 @@ def get_config():
         "beta_0": beta_0,
         "beta_t": beta_t,
         "timesteps": timesteps,
-        "time_emb_dim": time_emb_dim
+        "schedule": schedule,
+        "time_emb_dim": time_emb_dim,
+        "model_dim": model_dim
     }
 
     return config

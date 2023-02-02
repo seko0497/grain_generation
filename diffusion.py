@@ -1,23 +1,21 @@
-import torch.nn as nn
 import torch
-from torch.utils.data import Dataset, DataLoader
-import torchvision
-from PIL import Image
-import matplotlib.pyplot as plt
-
-import config
-from wear_generation.dataset_wear import WearDataset
+import wandb
 
 
 class Diffusion:
 
-    def __init__(self, beta_0, beta_t, timesteps, img_size, device):
+    def __init__(self, beta_0, beta_t, timesteps, img_size, device, schedule,
+                 use_wandb=False):
 
-        self.image_size = img_size
+        self.use_wandb = use_wandb
 
         self.timesteps = timesteps
+        self.image_size = img_size
 
-        self.betas = self.beta_schedule(beta_0, beta_t, timesteps)
+        if schedule == "linear":
+            self.betas = self.beta_schedule(beta_0, beta_t, timesteps)
+        elif schedule == "cosine":
+            self.betas = self.cosine_beta_schedule(timesteps)
         self.alphas = 1. - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, axis=0)
         self.alphas_cumprod_prev = torch.cat(
@@ -36,6 +34,16 @@ class Diffusion:
     def beta_schedule(self, start, end, timesteps):
 
         return torch.linspace(start, end, timesteps)
+
+    def cosine_beta_schedule(self, timesteps, s=0.0008):
+
+        steps = timesteps + 1
+        x = torch.linspace(0, timesteps, steps)
+        alphas_cumprod = torch.cos(
+            ((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+        alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+        betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+        return torch.clip(betas, 0.0001, 0.9999)
 
     def extract(self, a, t, x_shape):
         batch_size = t.shape[0]
@@ -58,47 +66,70 @@ class Diffusion:
         return (sqrt_alphas_cumprod_t * x_0 +
                 sqrt_one_minus_alphas_cumprod_t * noise), noise
 
-    def sample(self, model, n):
+    def sample(self, model, n, epoch):
 
         model.eval()
         with torch.no_grad():
+
+            samples = torch.Tensor()
 
             x = torch.randn((n, 3, self.image_size[0], self.image_size[1]))
 
             for t in reversed(range(self.timesteps)):
 
-                if t > 0:
-                    noise = torch.randn(self.image_size)
-                else:
-                    noise = torch.zeros(self.image_size)
+                betas_t = self.extract(
+                    self.betas,
+                    torch.full((n,), t), x.shape)
 
-                alpha = self.extract(
-                    self.alphas, torch.full((n,), t),
-                    self.image_size)
-                alpha_comprod = self.extract(
-                    self.alphas_cumprod, torch.full((n,), t),
-                    self.image_size)
-                posterior = self.extract(
-                    self.alphas_cumprod_prev, torch.full((n,), t),
-                    self.image_size)
+                sqrt_one_minus_alphas_cumprod_t = self.extract(
+                    self.sqrt_one_minus_alphas_cumprod,
+                    torch.full((n,), t), x.shape)
+
+                sqrt_recip_alphas_t = self.extract(
+                    torch.sqrt(1.0 / self.alphas),
+                    torch.full((n,), t), x.shape)
 
                 predicted_noise = model(
                     x.to(self.device), torch.full((n,), t).to(self.device))
 
-                x = (1. / torch.sqrt(alpha) *
-                     (
-                     - ((1 - alpha) / (torch.sqrt(1 - alpha_comprod)))
-                     * predicted_noise.cpu())
-                     + posterior * noise)
+                model_mean = (sqrt_recip_alphas_t * (
+                    x - ((betas_t / sqrt_one_minus_alphas_cumprod_t)
+                         * predicted_noise.cpu())
+                    ))
+
+                if t == 0:
+
+                    x = model_mean
+
+                else:
+
+                    model_mean = model_mean.clamp(-1, 1)
+                    posterior_variance_t = self.extract(
+                        self.posterior_variance,
+                        torch.full((n,), t), x.shape
+                    )
+
+                    noise = torch.randn_like(x)
+                    x = (model_mean + torch.sqrt(posterior_variance_t) * noise)
+
+                if t % 100 == 0 or t == self.timesteps - 1:
+                    samples = torch.cat((samples, x[0]), dim=2)
+
+            samples = (samples.clamp(-1, 1) + 1) / 2
+            samples = (samples * 255).type(torch.uint8)
+
+            if self.use_wandb:
+
+                wandb.log({"Sample_evolution": wandb.Image(
+                    torch.moveaxis(samples, 0, -1).cpu().detach().numpy())},
+                    step=epoch, commit=False)
 
             model.train()
-            # x = (x.clamp(-1, 1) + 1) / 2
-            x = (x + 1) / 2
-            # x = (x * 255).type(torch.uint8)
+            x = (x.clamp(-1, 1) + 1) / 2
 
             return x
 
-
+# DEBUG
 # config = config.get_config()
 
 # diffusion = Diffusion(

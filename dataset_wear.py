@@ -1,15 +1,12 @@
-from matplotlib import pyplot as plt
-import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image
-import numpy as np
 import os
 
 
 class WearDataset(Dataset):
 
-    def __init__(self, root_dir):
+    def __init__(self, root_dir, raw_img_size, img_size):
 
         self.root_dir = root_dir
 
@@ -23,6 +20,8 @@ class WearDataset(Dataset):
 
         self.transforms = transforms.Compose([
             transforms.ToTensor(),
+            transforms.CenterCrop(raw_img_size[0]),
+            transforms.Resize(img_size),
             transforms.Lambda(lambda x: x * 2 - 1)
         ])
 
@@ -40,7 +39,7 @@ class WearDataset(Dataset):
 
 # DEBUG
 # wear_dataset = WearDataset(
-#     "data/RT100U_processed/train")
+#     "data/RT100U_processed/train", (448, 576), (128, 128))
 # wear_dataloader = DataLoader(wear_dataset, batch_size=4)
 # for batch in wear_dataloader:
 #     # pass

@@ -1,12 +1,6 @@
-from torch.utils.data import Dataset, DataLoader
-import matplotlib.pyplot as plt
 import wandb
 from tqdm import tqdm
 import torch
-from wear_generation.dataset_wear import WearDataset
-
-from wear_generation.diffusion import Diffusion
-from wear_generation.unet import UNet
 
 
 def train(
@@ -32,18 +26,20 @@ def train(
         optimizer.zero_grad()
         output = model(noisy_image, t)
 
-        if batch_idx == 0 and epoch % 5 == 0:
-            wandb.log({"Train": [
-                wandb.Image(
-                    torch.moveaxis(
-                        noisy_image[0], 0, -1).cpu().detach().numpy()),
-                wandb.Image(
-                    torch.moveaxis(
-                        noise[0], 0, -1).cpu().detach().numpy()),
-                wandb.Image(
-                    torch.moveaxis(
-                        output[0], 0, -1).cpu().detach().numpy())]},
-                      step=epoch, commit=False)
+        if use_wandb:
+
+            if batch_idx == 0 and epoch % 5 == 0:
+                wandb.log({"Train": [
+                    wandb.Image(
+                        torch.moveaxis(
+                            noisy_image[0], 0, -1).cpu().detach().numpy()),
+                    wandb.Image(
+                        torch.moveaxis(
+                            noise[0], 0, -1).cpu().detach().numpy()),
+                    wandb.Image(
+                        torch.moveaxis(
+                            output[0], 0, -1).cpu().detach().numpy())]},
+                          step=epoch, commit=False)
 
         # Backward pass
         loss = loss_fn(output, noise)

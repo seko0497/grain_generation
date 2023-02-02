@@ -2,11 +2,13 @@ import torch
 import wandb
 from config import get_config
 from torch.utils.data import DataLoader
-from unet import UNet
+from unet import Unet
 from train import train
 
 from wear_generation.dataset_wear import WearDataset
 from diffusion import Diffusion
+
+from torchmetrics.image.fid import FrechetInceptionDistance
 
 
 def main():
@@ -28,6 +30,8 @@ def main():
     if use_wandb:
         train_loader = DataLoader(WearDataset(
             f"{config['train_dataset']}/train",
+            raw_img_size=config['raw_img_size'],
+            img_size=config['img_size']
         ), batch_size=wandb.config.batch_size,
            num_workers=config.get("num_workers", 1),
            persistent_workers=persistent_workers,
@@ -38,19 +42,38 @@ def main():
 
         train_loader = DataLoader(WearDataset(
             f"{config['train_dataset']}/train",
+            raw_img_size=config['raw_img_size'],
+            img_size=config['img_size']
         ), batch_size=config.get("batch_size", 4),
            num_workers=config.get("num_workers", 1),
            persistent_workers=persistent_workers,
            pin_memory=True,
            shuffle=True)
 
-    model = UNet(3, 3, config["time_emb_dim"], device)
+    fid = FrechetInceptionDistance(normalize=True, reset_real_features=False)
+    fid_loader = DataLoader(WearDataset(
+        f"{config['train_dataset']}/train",
+        raw_img_size=config['raw_img_size'],
+        img_size=config['img_size']
+    ), batch_size=115,
+        num_workers=config.get("num_workers", 1),
+        persistent_workers=persistent_workers,
+        pin_memory=True,
+        shuffle=False)
+    for batch in fid_loader:
+        real_samples = (batch["I"] + 1) / 2
+
+    fid.update(real_samples, real=True)
+
+    model = Unet(config["model_dim"], device)
     diffusion = Diffusion(
         config["beta_0"],
         config["beta_t"],
         config["timesteps"],
         config["img_size"],
-        device
+        device,
+        config['schedule'],
+        use_wandb=use_wandb
     )
 
     if torch.cuda.device_count() > 1:
@@ -78,16 +101,39 @@ def main():
     if use_wandb:
         wandb.watch(model, log="all")
 
+    best = {"epoch": 0, "fid": torch.inf}
+
     for epoch in range(1, config["epochs"] + 1):
         epoch_loss = train(model, diffusion, config["timesteps"], device,
                            train_loader, optimizer, epoch, loss, use_wandb)
         if epoch % config["evaluate_every"] == 0:
-            samples = diffusion.sample(model, 1)
-            wandb.log({"Sample": wandb.Image(
-                torch.moveaxis(samples[0], 0, -1).cpu().detach().numpy())},
-                step=epoch, commit=False)
+            samples = diffusion.sample(model, 4, epoch)
+            if use_wandb:
+                wandb.log({"Sample": wandb.Image(
+                    torch.moveaxis(samples[0], 0, -1).cpu().detach().numpy())},
+                    step=epoch, commit=False)
+            fid.reset()
+            fid.update(samples, real=False)
+            current_fid = fid.compute()
+            if current_fid <= best["fid"]:
+                best["epoch"] = epoch
+                best["fid"] = current_fid
 
-        wandb.log({"train_loss": epoch_loss})
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': loss}, "wear_generation/best.pth")
+                wandb.save("wear_generation/best.pth")
+
+            if use_wandb:
+                wandb.log({"FID": current_fid,
+                           "best_epoch": best["epoch"],
+                           "best_fid": best["fid"]},
+                          step=epoch, commit=False)
+
+        if use_wandb:
+            wandb.log({"train_loss": epoch_loss})
 
 
 if __name__ == '__main__':

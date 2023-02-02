@@ -1,143 +1,311 @@
-import math
-import einops
 import torch.nn as nn
+import einops
 import torch
-import torchvision.transforms as transforms
+import math
+from functools import partial
 
 
-class UNet(nn.Module):
+class Unet(nn.Module):
 
-    def __init__(
-            self, in_channels, out_channels, time_emb_dim, device) -> None:
+    def __init__(self, dim, device, dim_mults=(1, 2, 4, 8), in_channels=3,
+                 resnet_block_groups=4):
+
         super().__init__()
 
-        self.time_mlp = nn.Sequential(
-            SinusoidalPosEmb(time_emb_dim, device),
-            nn.Linear(time_emb_dim, time_emb_dim),
-            nn.ReLU()
+        self.init_conv = nn.Conv2d(in_channels, dim, 1, padding=0)
 
+        dims = [dim] + [dim * mult for mult in dim_mults]
+        in_out = list(zip(dims[:-1], dims[1:]))
+
+        time_emb_dim = dim * 4
+
+        self.time_mlp = nn.Sequential(
+            SinusoidalPosEmb(dim, device),
+            nn.Linear(dim, time_emb_dim),
+            nn.GELU(),
+            nn.Linear(time_emb_dim, time_emb_dim)
         )
 
-        self.contracting_block_0 = ContractingBlock(
-            in_channels, 64, time_emb_dim)
-        self.contracting_block_1 = ContractingBlock(64, 128, time_emb_dim)
-        self.contracting_block_2 = ContractingBlock(128, 256, time_emb_dim)
-        self.contracting_block_3 = ContractingBlock(256, 512, time_emb_dim)
+        self.downs = nn.ModuleList([])
+        self.ups = nn.ModuleList([])
 
-        self.head = Head(512, 1024)
+        for i, (dim_in, dim_out) in enumerate(in_out):
 
-        self.expansive_block_0 = ExpansiveBlock(1024, 512, time_emb_dim)
-        self.expansive_block_1 = ExpansiveBlock(512, 256, time_emb_dim)
-        self.expansive_block_2 = ExpansiveBlock(256, 128, time_emb_dim)
-        self.expansive_block_3 = ExpansiveBlock(128, 64, time_emb_dim)
+            if i >= len(in_out) - 1:
+                is_last = True
+            else:
+                is_last = False
 
-        self.final_conv = nn.Conv2d(64, out_channels, kernel_size=1)
+            self.downs.append(nn.ModuleList([
+                ResnetBlock(
+                    dim_in, dim_in, time_emb_dim, resnet_block_groups),
+                ResnetBlock(
+                    dim_in, dim_in, time_emb_dim, resnet_block_groups),
+                Residual(PreNorm(dim_in, LinearAttention(dim_in))),
+                Downsample(dim_in, dim_out) if not is_last
+                else nn.Conv2d(dim_in, dim_out, 3, padding=1)
+            ]))
+
+        self.head1 = ResnetBlock(
+            dims[-1], dims[-1], time_emb_dim, resnet_block_groups)
+        self.head_attention = Residual(PreNorm(dims[-1], Attention(dims[-1])))
+        self.head2 = ResnetBlock(
+            dims[-1], dims[-1], time_emb_dim, resnet_block_groups)
+
+        for i, (dim_in, dim_out) in enumerate(reversed(in_out)):
+
+            if i >= len(in_out) - 1:
+                is_last = True
+            else:
+                is_last = False
+
+            self.ups.append(nn.ModuleList([
+                ResnetBlock(
+                    dim_out + dim_in, dim_out,
+                    time_emb_dim,
+                    resnet_block_groups
+                ),
+                ResnetBlock(
+                    dim_out + dim_in, dim_out,
+                    time_emb_dim,
+                    resnet_block_groups
+                ),
+                Residual(PreNorm(dim_out, LinearAttention(dim_out))),
+                Upsample(dim_out, dim_in) if not is_last
+                else nn.Conv2d(dim_out, dim_in, 3, padding=1)
+            ]))
+
+        self.final_block = ResnetBlock(
+            dim * 2, dim, time_emb_dim, resnet_block_groups)
+        self.final_conv = nn.Conv2d(dim, in_channels, 1)
 
     def forward(self, x, t):
 
+        x = self.init_conv(x)
+        residual = x.clone()
+
         t = self.time_mlp(t)
 
-        x, intermediate_0 = self.contracting_block_0(x, t)
-        x, intermediate_1 = self.contracting_block_1(x, t)
-        x, intermediate_2 = self.contracting_block_2(x, t)
-        x, intermediate_3 = self.contracting_block_3(x, t)
+        h = []
 
-        x = self.head(x)
+        for block1, block2, attention, downsample in self.downs:
 
-        x = self.expansive_block_0(x, t, intermediate_3)
-        x = self.expansive_block_1(x, t, intermediate_2)
-        x = self.expansive_block_2(x, t, intermediate_1)
-        x = self.expansive_block_3(x, t, intermediate_0)
+            x = block1(x, t)
+            h.append(x)
 
-        x = self.final_conv(x)
-        x = nn.functional.interpolate(x, (448, 576))
+            x = block2(x, t)
+            x = attention(x)
+            h.append(x)
+
+            x = downsample(x)
+
+        x = self.head1(x, t)
+        x = self.head_attention(x)
+        x = self.head2(x, t)
+
+        for block1, block2, attention, upsample in self.ups:
+
+            x = torch.cat((x, h.pop()), dim=1)
+            x = block1(x, t)
+
+            x = torch.cat((x, h.pop()), dim=1)
+            x = block2(x, t)
+            x = attention(x)
+
+            x = upsample(x)
+
+        x = torch.cat((x, residual), dim=1)
+
+        x = self.final_block(x, t)
+        return self.final_conv(x)
+
+
+class WeightStandardizedCOnv2d(nn.Conv2d):
+
+    """siehe https://arxiv.org/abs/1903.10520"""
+
+    def forward(self, x):
+
+        eps = 1e-5 if x.dtype == torch.float32 else 1e-3
+        mean = einops.reduce(
+            self.weight,
+            "o ... -> o 1 1 1", "mean"
+        )
+        var = einops.reduce(
+            self.weight,
+            "o ... -> o 1 1 1", partial(torch.var, unbiased=False)
+        )
+
+        normalized_weight = (self.weight - mean) * (var + eps).rsqrt()
+
+        return torch.nn.functional.conv2d(
+            x, normalized_weight, self.bias, self.stride, self.padding,
+            self.dilation, self.groups
+        )
+
+
+class Block(nn.Module):
+
+    def __init__(self, in_channels, out_channels, groups=8):
+        super().__init__()
+        self.conv = WeightStandardizedCOnv2d(
+            in_channels, out_channels, 3, padding=1)
+        self.group_norm = nn.GroupNorm(groups, out_channels)
+        self.silu = nn.SiLU()
+
+    def forward(self, x, scale_shift=None):
+
+        x = self.group_norm(self.conv(x))
+
+        if scale_shift is not None:
+
+            x = x * (scale_shift[0] + 1)
+            x += scale_shift[1]
+
+        x = self.silu(x)
 
         return x
 
 
-class ContractingBlock(nn.Module):
+class PreNorm(nn.Module):
+    def __init__(self, dim, fn):
+        super().__init__()
+        self.fn = fn
+        self.norm = nn.GroupNorm(1, dim)
 
-    def __init__(self, in_channels, out_channels, time_emb_dim) -> None:
+    def forward(self, x):
+        x = self.norm(x)
+        return self.fn(x)
+
+
+class ResnetBlock(nn.Module):
+
+    def __init__(self, in_channels, out_channels, time_emb_dim, groups=8):
+
         super().__init__()
 
-        self.time_mlp = nn.Linear(time_emb_dim, out_channels)
+        # maps on time_emb_dim for each scale and shift
+        self.mlp = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(time_emb_dim, out_channels * 2)
+        )
 
-        self.conv0 = nn.Conv2d(in_channels, out_channels, 3)
-        self.conv1 = nn.Conv2d(out_channels, out_channels, 3)
+        self.block1 = Block(in_channels, out_channels, groups=groups)
+        self.block2 = Block(out_channels, out_channels, groups=groups)
+        self.res_conv = nn.Conv2d(in_channels, out_channels, 1)
 
-        self.silu = nn.SiLU()
-        self.group_nom = nn.GroupNorm(1, out_channels)
+    def forward(self, x, time_emb):
 
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
+        time_emb = self.mlp(time_emb)
+        time_emb = einops.rearrange(time_emb, "b c -> b c 1 1")
+        scale_shift = time_emb.chunk(2, dim=1)
 
-    def forward(self, x, t):
-
-        x = self.group_nom(self.silu(self.conv0(x)))
-
-        time_emb = self.time_mlp(t)
-        time_emb = einops.rearrange(time_emb, 'b c -> b c 1 1')
-        x = x + time_emb
-
-        intermediate = self.group_nom(self.silu(self.conv1(x)))
-        x = self.pool(intermediate)
-
-        return x, intermediate
+        h = self.block1(x, scale_shift)
+        h = self.block2(h)
+        return h + self.res_conv(x)
 
 
-class Head(nn.Module):
+class Attention(nn.Module):
+    def __init__(self, dim, heads=4, dim_head=32):
+        super().__init__()
+        self.scale = dim_head**-0.5
+        self.heads = heads
+        hidden_dim = dim_head * heads
+        self.to_qkv = nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
+        self.to_out = nn.Conv2d(hidden_dim, dim, 1)
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+        qkv = self.to_qkv(x).chunk(3, dim=1)
+        q, k, v = map(
+            lambda t: einops.rearrange(
+                t, "b (h c) x y -> b h c (x y)", h=self.heads),
+            qkv
+        )
+        q = q * self.scale
+
+        sim = torch.einsum("b h d i, b h d j -> b h i j", q, k)
+        sim = sim - sim.amax(dim=-1, keepdim=True).detach()
+        attn = sim.softmax(dim=-1)
+
+        out = torch.einsum("b h i j, b h d j -> b h i d", attn, v)
+        out = einops.rearrange(out, "b h (x y) d -> b (h d) x y", x=h, y=w)
+        return self.to_out(out)
+
+
+class LinearAttention(nn.Module):
+    def __init__(self, dim, heads=4, dim_head=32):
+        super().__init__()
+        self.scale = dim_head**-0.5
+        self.heads = heads
+        hidden_dim = dim_head * heads
+        self.to_qkv = nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
+
+        self.to_out = nn.Sequential(nn.Conv2d(hidden_dim, dim, 1),
+                                    nn.GroupNorm(1, dim))
+
+    def forward(self, x):
+        b, c, h, w = x.shape
+        qkv = self.to_qkv(x).chunk(3, dim=1)
+        q, k, v = map(
+            lambda t: einops.rearrange(
+                t, "b (h c) x y -> b h c (x y)", h=self.heads),
+            qkv
+        )
+
+        q = q.softmax(dim=-2)
+        k = k.softmax(dim=-1)
+
+        q = q * self.scale
+        context = torch.einsum("b h d n, b h e n -> b h d e", k, v)
+
+        out = torch.einsum("b h d e, b h d n -> b h e n", context, q)
+        out = einops.rearrange(
+            out, "b h c (x y) -> b (h c) x y", h=self.heads, x=h, y=w)
+        return self.to_out(out)
+
+
+class Residual(nn.Module):
+    def __init__(self, fn):
+        super().__init__()
+        self.fn = fn
+
+    def forward(self, x, *args, **kwargs):
+        return self.fn(x, *args, **kwargs) + x
+
+
+class Downsample(nn.Module):
+
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
+        self.conv_down = nn.Conv2d(in_channels * 4, out_channels, 1)
+
+    def forward(self, x):
+
+        x = einops.rearrange(
+            x,
+            'b c (h p1) (w p2) -> b (c p1 p2) h w', p1=2, p2=2
+        )
+        return self.conv_down(x)
+
+
+class Upsample(nn.Module):
 
     def __init__(self, in_channels, out_channels) -> None:
         super().__init__()
 
-        self.conv0 = nn.Conv2d(in_channels, out_channels, 3)
-        self.conv1 = nn.Conv2d(out_channels, out_channels, 3)
-
-        self.relu = nn.ReLU()
+        self.upsample = nn.Sequential(
+            nn.Upsample(scale_factor=2, mode="nearest"),
+            nn.Conv2d(in_channels, out_channels, 3, padding=1)
+        )
 
     def forward(self, x):
 
-        x = self.relu(self.conv0(x))
-        x = self.relu(self.conv1(x))
-
-        return x
-
-
-class ExpansiveBlock(nn.Module):
-
-    def __init__(self, in_channels, out_channels, time_emb_dim):
-
-        super().__init__()
-
-        self.upsample = nn.Upsample(scale_factor=2, mode="nearest")
-
-        self.time_mlp = nn.Linear(time_emb_dim, out_channels)
-
-        self.conv_up = nn.Conv2d(in_channels, out_channels, 3, padding=1)
-        self.conv0 = nn.Conv2d(in_channels, out_channels, 3)
-        self.conv1 = nn.Conv2d(out_channels, out_channels, 3)
-
-        self.silu = nn.SiLU()
-        self.group_norm = nn.GroupNorm(1, out_channels)
-
-    def forward(self, x, t, intermediate):
-
-        x = self.upsample(x)
-        x = self.conv_up(x)
-
-        intermediate = transforms.functional.center_crop(
-            intermediate, [x.shape[2], x.shape[3]])
-
-        x = torch.cat((x, intermediate), dim=1)
-
-        x = self.group_norm(self.silu(self.conv0(x)))
-
-        time_emb = self.time_mlp(t)
-        time_emb = einops.rearrange(time_emb, 'b c -> b c 1 1')
-        x = x + time_emb
-
-        x = self.group_norm(self.silu(self.conv1(x)))
-
-        return x
+        return self.upsample(x)
 
 
 class SinusoidalPosEmb(nn.Module):
