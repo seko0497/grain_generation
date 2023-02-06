@@ -74,6 +74,7 @@ class Diffusion:
             samples = torch.Tensor()
 
             x = torch.randn((n, 3, self.image_size[0], self.image_size[1]))
+            samples = torch.cat((samples, x[0]), dim=2)
 
             for t in reversed(range(self.timesteps)):
 
@@ -112,7 +113,7 @@ class Diffusion:
                     noise = torch.randn_like(x)
                     x = (model_mean + torch.sqrt(posterior_variance_t) * noise)
 
-                if t % 100 == 0 or t == self.timesteps - 1:
+                if t % (self.timesteps / 10) == 0:
                     samples = torch.cat((samples, x[0]), dim=2)
 
             samples = (samples.clamp(-1, 1) + 1) / 2
