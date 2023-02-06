@@ -12,7 +12,8 @@ def get_config():
     raw_img_size = (448, 576)
     img_size = (128, 128)
 
-    local = False
+    local = True
+    use_wandb = False
 
     # Model config
 
@@ -29,6 +30,7 @@ def get_config():
     loss = "MSELoss"
     learning_rate = 0.00001
     epochs = 10000
+    ema = True
     num_workers = 32
 
     # Eval config
@@ -36,7 +38,6 @@ def get_config():
     evaluate_every = 10
 
     random_seed = 1234
-    use_wandb = True
 
     if local:
         num_workers = 0
@@ -51,6 +52,7 @@ def get_config():
         "loss": loss,
         "random_seed": random_seed,
         "epochs": epochs,
+        "ema": ema,
         "num_workers": num_workers,
         "learning_rate": learning_rate,
         "evaluate_every": evaluate_every,

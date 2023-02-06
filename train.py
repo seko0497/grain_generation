@@ -5,7 +5,7 @@ import torch
 
 def train(
     model, diffusion, timesteps, device, data_loader, optimizer,
-        epoch, loss_fn, use_wandb=False):
+        epoch, loss_fn, use_wandb=False, ema=None):
 
     model.train()
 
@@ -48,6 +48,9 @@ def train(
 
         loss.backward()
         optimizer.step()
+
+        if ema:
+            ema.step()
 
     epoch_loss /= len(data_loader)
 

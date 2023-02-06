@@ -1,5 +1,6 @@
 import torch
 import wandb
+import copy
 from config import get_config
 from torch.utils.data import DataLoader
 from unet import Unet
@@ -7,6 +8,7 @@ from train import train
 
 from wear_generation.dataset_wear import WearDataset
 from diffusion import Diffusion
+from ema import ExponentialMovingAverage
 
 from torchmetrics.image.fid import FrechetInceptionDistance
 
@@ -20,11 +22,11 @@ def main():
     if use_wandb:
         wandb.init(config=config, entity="seko97", project="wear_generation")
 
-    wandb.config.update(
-        {"beta_0": config["beta_0"] / (wandb.config.timesteps / 1000),
-         "beta_t": config["beta_t"] / (wandb.config.timesteps / 1000)},
-        allow_val_change=True
-    )
+        wandb.config.update(
+            {"beta_0": config["beta_0"] / (wandb.config.timesteps / 1000),
+             "beta_t": config["beta_t"] / (wandb.config.timesteps / 1000)},
+            allow_val_change=True
+        )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -74,9 +76,21 @@ def main():
     fid.update(real_samples, real=True)
 
     if use_wandb:
-        model = Unet(config["model_dim"], device)
-    else:
         model = Unet(wandb.config.model_dim, device)
+    else:
+        model = Unet(config["model_dim"], device)
+
+    if use_wandb:
+        if wandb.config.ema:
+            ema = ExponentialMovingAverage(model)
+        else:
+            ema = None
+
+    else:
+        if config["ema"]:
+            ema = ExponentialMovingAverage(model)
+        else:
+            ema = None
 
     if use_wandb:
 
@@ -129,9 +143,16 @@ def main():
 
     for epoch in range(1, config["epochs"] + 1):
         epoch_loss = train(model, diffusion, timesteps, device,
-                           train_loader, optimizer, epoch, loss, use_wandb)
+                           train_loader, optimizer, epoch, loss,
+                           use_wandb, ema)
         if epoch % config["evaluate_every"] == 0:
-            samples = diffusion.sample(model, 4, epoch)
+
+            if ema is not None:
+                eval_model = ema.ema_model
+            else:
+                eval_model = model
+
+            samples = diffusion.sample(eval_model, 4, epoch)
             if use_wandb:
                 wandb.log({"Sample": wandb.Image(
                     torch.moveaxis(samples[0], 0, -1).cpu().detach().numpy())},
@@ -145,7 +166,7 @@ def main():
 
                 torch.save({
                     'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
+                    'model_state_dict': eval_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': loss}, "wear_generation/best.pth")
                 wandb.save("wear_generation/best.pth")
