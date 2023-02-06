@@ -12,7 +12,7 @@ def get_config():
     raw_img_size = (448, 576)
     img_size = (128, 128)
 
-    local = True
+    local = False
 
     # Model config
 
@@ -20,7 +20,6 @@ def get_config():
     beta_t = 0.02
     timesteps = 1000
     schedule = "cosine"
-    time_emb_dim = 256
     model_dim = 128
 
     # Train config
@@ -40,7 +39,6 @@ def get_config():
     use_wandb = True
 
     if local:
-        use_wandb = False
         num_workers = 0
         batch_size = 2
 
@@ -61,7 +59,6 @@ def get_config():
         "beta_t": beta_t,
         "timesteps": timesteps,
         "schedule": schedule,
-        "time_emb_dim": time_emb_dim,
         "model_dim": model_dim
     }
 
