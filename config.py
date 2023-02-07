@@ -9,8 +9,8 @@ train_dataset = "data/RT100U_processed"
 raw_img_size = (448, 576)
 img_size = (128, 128)
 
-local = True
-use_wandb = False
+local = False
+use_wandb = True
 
 # Model config
 
@@ -22,13 +22,13 @@ model_dim = 128
 
 # Train config
 
-batch_size = 32
+batch_size = 16
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
 epochs = 10000
 ema = True
-num_workers = 32
+num_workers = 12
 
 # Eval config
 
@@ -60,28 +60,3 @@ config = {
     "schedule": schedule,
     "model_dim": model_dim
 }
-
-if use_wandb:
-    wandb.init(config=config, entity="seko97", project="wear_generation")
-
-    wandb.config.update(
-        {"beta_0": config["beta_0"] / (wandb.config.timesteps / 1000),
-         "beta_t": config["beta_t"] / (wandb.config.timesteps / 1000)},
-        allow_val_change=True)
-
-
-class Config():
-
-    def __init__(self, config=config, wandb=use_wandb):
-
-        self.use_wand = wandb
-        self.config = config
-
-    def get(self, key):
-
-        if self.use_wand:
-
-            return getattr(wandb.config, key)
-
-        else:
-            return config[key]

@@ -19,6 +19,8 @@ class Validation():
         self.num_workers = num_workers
         self.use_wandb = use_wandb
 
+        self.fit_real_samples()
+
     def fit_real_samples(self):
 
         fid_loader = DataLoader(WearDataset(
@@ -35,7 +37,7 @@ class Validation():
 
         self.fid.update(real_samples, real=True)
 
-    def validate(self, samples, epoch):
+    def validate(self, samples):
 
         self.fid.reset()
         self.fid.update(samples, real=False)

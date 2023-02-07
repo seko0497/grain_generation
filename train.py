@@ -50,7 +50,7 @@ def train(
         optimizer.step()
 
         if ema:
-            ema.step()
+            ema.step(epoch, model)
 
     epoch_loss /= len(data_loader)
 

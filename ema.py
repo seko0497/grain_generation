@@ -3,17 +3,16 @@ import copy
 
 class ExponentialMovingAverage():
 
-    def __init__(self, model, momentum=0.99, warmup=50):
+    def __init__(self, model, momentum=0.9999, warmup=50):
 
         super().__init__()
 
-        self.step = 0
         self.warmup = warmup
         self.momentum = momentum
 
         self.ema_model = copy.deepcopy(model).eval().requires_grad_(False)
 
-    def ema_step(self, step, model):
+    def step(self, step, model):
 
         if step < self.warmup:
             self.ema_model.load_state_dict(model.state_dict())

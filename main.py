@@ -1,12 +1,12 @@
 import torch
 import wandb
 import copy
-from config import Config
+from config import config as config_dict
 from torch.utils.data import DataLoader
 from unet import Unet
 from train import train
 
-from wear_generation.dataset_wear import WearDataset
+from dataset_wear import WearDataset
 from diffusion import Diffusion
 from ema import ExponentialMovingAverage
 
@@ -15,11 +15,20 @@ from validate import Validation
 
 def main():
 
-    config = Config()
+    if config_dict["use_wandb"]:
+        wandb.init(
+            config=config_dict, entity="seko97", project="wear_generation")
+
+    config = Config(config=config_dict, wandb=config_dict["use_wandb"])
+
+    wandb.config.update(
+        {"beta_0": config.get("beta_0") / (wandb.config.timesteps / 1000),
+         "beta_t": config.get("beta_t") / (wandb.config.timesteps / 1000)},
+        allow_val_change=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    torch.manual_seed(config.get("random_seed", 1234))
+    torch.manual_seed(config.get("random_seed"))
     torch.backends.cudnn.determerministic = True
 
     persistent_workers = True if config.get("num_workers") > 0 else False
@@ -37,10 +46,15 @@ def main():
     validation = Validation(
         f"{config.get('train_dataset')}/train",
         config.get("raw_img_size"),
-        config.get("image_size"),
+        config.get("img_size"),
         num_workers=config.get("num_workers"))
 
     model = Unet(config.get("model_dim"), device)
+
+    if torch.cuda.device_count() > 1:
+        model = torch.nn.parallel.DataParallel(model)
+
+    model.to(device)
 
     if config.get("ema"):
         ema = ExponentialMovingAverage(model)
@@ -56,25 +70,20 @@ def main():
         config.get('schedule'),
         use_wandb=config.get("use_wandb"))
 
-    if torch.cuda.device_count() > 1:
-        model = torch.nn.parallel.DataParallel(model)
-
-    model.to(device)
-
     optimizer = getattr(torch.optim, config.get("optimizer"))(
         model.parameters(),
-        lr=config["learning_rate"],
+        lr=config.get("learning_rate"),
         betas=[0.0, 0.999]
     )
 
-    loss = getattr(torch.nn, config.get("loss", "CrossEntropyLoss"))()
+    loss = getattr(torch.nn, config.get("loss"))()
 
     if config.get("use_wandb"):
         wandb.watch(model, log="all")
 
     best = {"epoch": 0, "fid": torch.inf}
 
-    for epoch in range(1, config["epochs"] + 1):
+    for epoch in range(1, config.get("epochs") + 1):
         epoch_loss = train(model,
                            diffusion,
                            config.get("timesteps"),
@@ -86,7 +95,7 @@ def main():
                            config.get("use_wandb"),
                            ema)
 
-        if epoch % config["evaluate_every"] == 0:
+        if epoch % config.get("evaluate_every") == 0:
 
             if ema is not None:
                 eval_model = ema.ema_model
@@ -95,7 +104,7 @@ def main():
 
             samples = diffusion.sample(eval_model, 4, epoch)
 
-            current_fid = validation.validate(samples, epoch)
+            current_fid = validation.validate(samples)
 
             if current_fid <= best["fid"]:
                 best["epoch"] = epoch
@@ -106,9 +115,9 @@ def main():
                     'model_state_dict': eval_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': loss}, "wear_generation/best.pth")
-                wandb.save("wear_generation/best.pth")
 
             if config.get("use_wandb"):
+                wandb.save("wear_generation/best.pth")
                 wandb.log({"FID": current_fid,
                            "best_epoch": best["epoch"],
                            "best_fid": best["fid"],
@@ -119,6 +128,23 @@ def main():
 
         if config.get("use_wandb"):
             wandb.log({"train_loss": epoch_loss})
+
+
+class Config():
+
+    def __init__(self, config, wandb=True):
+
+        self.use_wand = wandb
+        self.config = config
+
+    def get(self, key):
+
+        if self.use_wand:
+
+            return getattr(wandb.config, key)
+
+        else:
+            return self.config[key]
 
 
 if __name__ == '__main__':
