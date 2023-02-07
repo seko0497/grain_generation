@@ -2,66 +2,86 @@ from json import encoder
 from torch import embedding
 import wandb
 
+# Data config
 
-def get_config():
+train_dataset = "data/RT100U_processed"
 
-    # Data config
+raw_img_size = (448, 576)
+img_size = (128, 128)
 
-    train_dataset = "data/RT100U_processed"
+local = True
+use_wandb = False
 
-    raw_img_size = (448, 576)
-    img_size = (128, 128)
+# Model config
 
-    local = True
-    use_wandb = False
+beta_0 = 0.0001
+beta_t = 0.02
+timesteps = 1000
+schedule = "cosine"
+model_dim = 128
 
-    # Model config
+# Train config
 
-    beta_0 = 0.0001
-    beta_t = 0.02
-    timesteps = 1000
-    schedule = "cosine"
-    model_dim = 128
+batch_size = 32
+optimizer = "Adam"
+loss = "MSELoss"
+learning_rate = 0.00001
+epochs = 10000
+ema = True
+num_workers = 32
 
-    # Train config
+# Eval config
 
-    batch_size = 32
-    optimizer = "Adam"
-    loss = "MSELoss"
-    learning_rate = 0.00001
-    epochs = 10000
-    ema = True
-    num_workers = 32
+evaluate_every = 10
 
-    # Eval config
+random_seed = 1234
 
-    evaluate_every = 10
+if local:
+    num_workers = 0
+    batch_size = 2
 
-    random_seed = 1234
+config = {
+    "train_dataset": train_dataset,
+    "raw_img_size": raw_img_size,
+    "img_size": img_size,
+    "batch_size": batch_size,
+    "optimizer": optimizer,
+    "loss": loss,
+    "random_seed": random_seed,
+    "epochs": epochs,
+    "ema": ema,
+    "num_workers": num_workers,
+    "learning_rate": learning_rate,
+    "evaluate_every": evaluate_every,
+    "use_wandb": use_wandb,
+    "beta_0": beta_0,
+    "beta_t": beta_t,
+    "timesteps": timesteps,
+    "schedule": schedule,
+    "model_dim": model_dim
+}
 
-    if local:
-        num_workers = 0
-        batch_size = 2
+if use_wandb:
+    wandb.init(config=config, entity="seko97", project="wear_generation")
 
-    config = {
-        "train_dataset": train_dataset,
-        "raw_img_size": raw_img_size,
-        "img_size": img_size,
-        "batch_size": batch_size,
-        "optimizer": optimizer,
-        "loss": loss,
-        "random_seed": random_seed,
-        "epochs": epochs,
-        "ema": ema,
-        "num_workers": num_workers,
-        "learning_rate": learning_rate,
-        "evaluate_every": evaluate_every,
-        "use_wandb": use_wandb,
-        "beta_0": beta_0,
-        "beta_t": beta_t,
-        "timesteps": timesteps,
-        "schedule": schedule,
-        "model_dim": model_dim
-    }
+    wandb.config.update(
+        {"beta_0": config["beta_0"] / (wandb.config.timesteps / 1000),
+         "beta_t": config["beta_t"] / (wandb.config.timesteps / 1000)},
+        allow_val_change=True)
 
-    return config
+
+class Config():
+
+    def __init__(self, config=config, wandb=use_wandb):
+
+        self.use_wand = wandb
+        self.config = config
+
+    def get(self, key):
+
+        if self.use_wand:
+
+            return getattr(wandb.config, key)
+
+        else:
+            return config[key]
