@@ -20,8 +20,8 @@ class ExponentialMovingAverage():
         else:
 
             for ema_params, model_params in zip(
-                    self.ema_model.named_parameters(),
-                    model.named_parameters()):
+                    self.ema_model.parameters(),
+                    model.parameters()):
 
                 ema_weight, model_weight = ema_params.data, model_params.data
 

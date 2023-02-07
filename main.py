@@ -21,10 +21,11 @@ def main():
 
     config = Config(config=config_dict, wandb=config_dict["use_wandb"])
 
-    wandb.config.update(
-        {"beta_0": config.get("beta_0") / (wandb.config.timesteps / 1000),
-         "beta_t": config.get("beta_t") / (wandb.config.timesteps / 1000)},
-        allow_val_change=True)
+    if config.get("use_wandb"):
+        wandb.config.update(
+            {"beta_0": config.get("beta_0") / (wandb.config.timesteps / 1000),
+             "beta_t": config.get("beta_t") / (wandb.config.timesteps / 1000)},
+            allow_val_change=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
