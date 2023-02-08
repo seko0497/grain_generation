@@ -12,7 +12,7 @@ def sweep():
         "batch_size": {
             "values": [4, 8, 16, 32, 64, 128]},
         "learning_rate": {
-            "values": [0.00001, 0.0001]},
+            "values": [0.00001, 0.000001]},
         "timesteps": {
             "values": [1000, 2000, 3000, 4000]},
         "model_dim": {
@@ -27,7 +27,7 @@ def sweep():
 
     sweep_config["parameters"] = parameters_dict
     sweep_id = wandb.sweep(sweep_config, project="wear_generation")
-    wandb.agent(sweep_id, main, count=100, project="wear_generation")
+    wandb.agent(sweep_id, main, count=20, project="wear_generation")
 
 
 if __name__ == "__main__":

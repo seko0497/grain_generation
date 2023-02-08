@@ -26,7 +26,7 @@ batch_size = 16
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
-epochs = 10000
+epochs = 500
 ema = True
 num_workers = 12
 
