@@ -130,6 +130,42 @@ class Diffusion:
 
             return x
 
+    def mean(self, x_t, x_0, t):
+
+        sqrt_alphas_cumprod_prev_t = self.extract(
+            torch.sqrt(self.alphas_cumprod_prev), t, x_0.shape)
+
+        one_minus_alphas_cumprod_t = self.extract(
+            1. - self.alphas_cumprod, t, x_0.shape)
+
+        sqrt_alphas = self.extract(
+            torch.sqrt(self.alphas, t, x_0.shape))
+
+        one_minus_alphas_cumprod_prev_t = self.extract(
+            1. - self.alphas_cumprod_prev, t, x_0.shape)
+
+        beta_t = self.extract(
+            self.betas, t, x_0.shape)
+
+        sum_1 = ((sqrt_alphas_cumprod_prev_t * beta_t) /
+                 one_minus_alphas_cumprod_t) * x_0
+
+        sum_2 = ((sqrt_alphas * one_minus_alphas_cumprod_prev_t) /
+                 one_minus_alphas_cumprod_t) * x_t
+
+        return sum_1 + sum_2
+
+    def q_posterior(self, x_t, x_0, t):
+
+        posterior_variance_t = self.extract(
+            self.posterior_variance, t, x_0.shape)
+
+        return self.mean(x_t, x_0, t), posterior_variance_t
+
+    def vlb_loss(self, x_t, x_0, t):
+
+        pass
+
 # DEBUG
 # config = config.get_config()
 
