@@ -8,7 +8,7 @@ from functools import partial
 class Unet(nn.Module):
 
     def __init__(self, dim, device, dim_mults=(1, 2, 4, 8), in_channels=3,
-                 resnet_block_groups=4):
+                 out_channels=3, resnet_block_groups=4):
 
         super().__init__()
 
@@ -77,7 +77,7 @@ class Unet(nn.Module):
 
         self.final_block = ResnetBlock(
             dim * 2, dim, time_emb_dim, resnet_block_groups)
-        self.final_conv = nn.Conv2d(dim, in_channels, 1)
+        self.final_conv = nn.Conv2d(dim, out_channels, 1)
 
     def forward(self, x, t):
 

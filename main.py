@@ -1,10 +1,10 @@
 import torch
 import wandb
-import copy
 from config import config as config_dict
 from torch.utils.data import DataLoader
 from unet import Unet
 from train import train
+from losses import HybridLoss
 
 from dataset_wear import WearDataset
 from diffusion import Diffusion
@@ -50,7 +50,9 @@ def main():
         config.get("img_size"),
         num_workers=config.get("num_workers"))
 
-    model = Unet(config.get("model_dim"), device)
+    model = Unet(config.get("model_dim"),
+                 device,
+                 out_channels=3 if config.get("loss") == "simple" else 6)
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.parallel.DataParallel(model)
@@ -77,7 +79,10 @@ def main():
         betas=[0.0, 0.999]
     )
 
-    loss = getattr(torch.nn, config.get("loss"))()
+    if config.get("loss") == "simple":
+        loss = torch.nn.MSELoss()
+    elif config.get("loss") == "hybrid":
+        loss = HybridLoss()
 
     if config.get("use_wandb"):
         wandb.watch(model, log="all")

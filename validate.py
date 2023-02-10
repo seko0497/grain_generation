@@ -40,7 +40,7 @@ class Validation():
     def validate(self, samples):
 
         self.fid.reset()
-        self.fid.update(samples, real=False)
+        self.fid.update(samples.cpu(), real=False)
         fid = self.fid.compute()
 
         return fid
