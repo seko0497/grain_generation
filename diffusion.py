@@ -6,12 +6,13 @@ from tqdm import tqdm
 class Diffusion:
 
     def __init__(self, beta_0, beta_t, timesteps, img_size, device, schedule,
-                 use_wandb=False):
+                 sampling_steps=None, use_wandb=False):
 
         self.use_wandb = use_wandb
 
         self.timesteps = timesteps
         self.image_size = img_size
+        self.sampling_steps = sampling_steps
 
         if schedule == "linear":
             self.betas = self.beta_schedule(beta_0, beta_t, timesteps)
@@ -88,8 +89,11 @@ class Diffusion:
             x = x.to(self.device)
             samples = torch.cat((samples, x[0]), dim=2)
 
+            timesteps = (self.timesteps if self.sampling_steps is None
+                         else self.sampling_steps)
+
             for t in tqdm(
-                 reversed(range(self.timesteps)), total=self.timesteps):
+                 reversed(range(timesteps)), total=timesteps):
 
                 prediction = model(
                     x.to(self.device), torch.full((n,), t).to(self.device))
@@ -123,7 +127,7 @@ class Diffusion:
                     noise = torch.randn_like(x)
                     x = (model_mean + torch.sqrt(model_var) * noise)
 
-                if t % (self.timesteps / 10) == 0:
+                if t % (timesteps / 10) == 0:
                     samples = torch.cat((samples, x[0]), dim=2)
 
             samples = (samples.clamp(-1, 1) + 1) / 2
