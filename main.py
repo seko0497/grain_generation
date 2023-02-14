@@ -52,7 +52,9 @@ def main():
 
     model = Unet(config.get("model_dim"),
                  device,
-                 out_channels=3 if config.get("loss") == "simple" else 6)
+                 out_channels=3 if config.get("loss") == "simple" else 6,
+                 dim_mults=config.get("dim_mults"),
+                 num_resnet_blocks=config.get("num_resnet_blocks"))
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.parallel.DataParallel(model)

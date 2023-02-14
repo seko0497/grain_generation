@@ -7,7 +7,7 @@ import wandb
 train_dataset = "data/RT100U_processed"
 
 raw_img_size = (448, 576)
-img_size = (128, 128)
+img_size = (64, 64)
 
 local = False
 use_wandb = True
@@ -16,18 +16,21 @@ use_wandb = True
 
 beta_0 = 0.0001
 beta_t = 0.02
-timesteps = 1000
+timesteps = 2000
 schedule = "cosine"
 model_dim = 128
+dim_mults = (1, 2, 4, 8)
+num_resnet_blocks = 2
+
 
 # Train config
 
-batch_size = 16
+batch_size = 32
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
 epochs = 2000
-ema = True
+ema = False
 num_workers = 12
 loss = "hybrid"
 
@@ -59,5 +62,7 @@ config = {
     "beta_t": beta_t,
     "timesteps": timesteps,
     "schedule": schedule,
-    "model_dim": model_dim
+    "model_dim": model_dim,
+    "dim_mults": dim_mults,
+    "num_resnet_blocks": num_resnet_blocks
 }
