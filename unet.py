@@ -8,7 +8,7 @@ from functools import partial
 class Unet(nn.Module):
 
     def __init__(self, dim, device, dim_mults=(1, 2, 4, 8), in_channels=3,
-                 resnet_block_groups=4):
+                 out_channels=3, resnet_block_groups=4, num_resnet_blocks=2):
 
         super().__init__()
 
@@ -37,10 +37,9 @@ class Unet(nn.Module):
                 is_last = False
 
             self.downs.append(nn.ModuleList([
-                ResnetBlock(
-                    dim_in, dim_in, time_emb_dim, resnet_block_groups),
-                ResnetBlock(
-                    dim_in, dim_in, time_emb_dim, resnet_block_groups),
+                nn.ModuleList([ResnetBlock(
+                    dim_in, dim_in, time_emb_dim, resnet_block_groups)
+                    for _ in range(num_resnet_blocks)]),
                 Residual(PreNorm(dim_in, LinearAttention(dim_in))),
                 Downsample(dim_in, dim_out) if not is_last
                 else nn.Conv2d(dim_in, dim_out, 3, padding=1)
@@ -60,16 +59,11 @@ class Unet(nn.Module):
                 is_last = False
 
             self.ups.append(nn.ModuleList([
-                ResnetBlock(
+                nn.ModuleList([ResnetBlock(
                     dim_out + dim_in, dim_out,
                     time_emb_dim,
                     resnet_block_groups
-                ),
-                ResnetBlock(
-                    dim_out + dim_in, dim_out,
-                    time_emb_dim,
-                    resnet_block_groups
-                ),
+                )for _ in range(num_resnet_blocks)]),
                 Residual(PreNorm(dim_out, LinearAttention(dim_out))),
                 Upsample(dim_out, dim_in) if not is_last
                 else nn.Conv2d(dim_out, dim_in, 3, padding=1)
@@ -77,7 +71,7 @@ class Unet(nn.Module):
 
         self.final_block = ResnetBlock(
             dim * 2, dim, time_emb_dim, resnet_block_groups)
-        self.final_conv = nn.Conv2d(dim, in_channels, 1)
+        self.final_conv = nn.Conv2d(dim, out_channels, 1)
 
     def forward(self, x, t):
 
@@ -88,12 +82,14 @@ class Unet(nn.Module):
 
         h = []
 
-        for block1, block2, attention, downsample in self.downs:
+        for blocks, attention, downsample in self.downs:
 
-            x = block1(x, t)
-            h.append(x)
+            for block in blocks[:-1]:
 
-            x = block2(x, t)
+                x = block(x, t)
+                h.append(x)
+
+            x = blocks[-1](x, t)
             x = attention(x)
             h.append(x)
 
@@ -103,13 +99,14 @@ class Unet(nn.Module):
         x = self.head_attention(x)
         x = self.head2(x, t)
 
-        for block1, block2, attention, upsample in self.ups:
+        for blocks, attention, upsample in self.ups:
+
+            for block in blocks[:-1]:
+                x = torch.cat((x, h.pop()), dim=1)
+                x = block(x, t)
 
             x = torch.cat((x, h.pop()), dim=1)
-            x = block1(x, t)
-
-            x = torch.cat((x, h.pop()), dim=1)
-            x = block2(x, t)
+            x = blocks[-1](x, t)
             x = attention(x)
 
             x = upsample(x)
