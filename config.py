@@ -6,13 +6,13 @@ raw_img_size = (448, 576)
 img_size = (64, 64)
 
 local = False
-use_wandb = True
+use_wandb = False
 
 # Model config
 
 beta_0 = 0.0001
 beta_t = 0.02
-timesteps = 2000
+timesteps = 4000
 schedule = "cosine"
 model_dim = 128
 dim_mults = (1, 2, 4, 8)
@@ -25,7 +25,7 @@ batch_size = 32
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
-epochs = 2000
+epochs = 3000
 ema = False
 num_workers = 12
 loss = "hybrid"
@@ -33,6 +33,8 @@ loss = "hybrid"
 # Eval config
 
 evaluate_every = 10
+start_eval_epoch = 0
+sampling_steps = 100
 
 random_seed = 1234
 
@@ -53,6 +55,8 @@ config = {
     "num_workers": num_workers,
     "learning_rate": learning_rate,
     "evaluate_every": evaluate_every,
+    "start_eval_epoch": start_eval_epoch,
+    "sampling_steps": sampling_steps,
     "use_wandb": use_wandb,
     "beta_0": beta_0,
     "beta_t": beta_t,

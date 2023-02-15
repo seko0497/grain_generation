@@ -7,7 +7,7 @@ from train import train
 from losses import HybridLoss
 
 from dataset_wear import WearDataset
-from diffusion import Diffusion
+from diffusion import Diffusion, get_schedule
 from ema import ExponentialMovingAverage
 
 from validate import Validation
@@ -66,13 +66,16 @@ def main():
     else:
         ema = None
 
-    diffusion = Diffusion(
+    betas = get_schedule(
+        config.get("schedule"),
         config.get("beta_0"),
         config.get("beta_t"),
+        config.get("timesteps"))
+    diffusion = Diffusion(
+        betas,
         config.get("timesteps"),
         config.get("img_size"),
         device,
-        config.get('schedule'),
         use_wandb=config.get("use_wandb"))
 
     optimizer = getattr(torch.optim, config.get("optimizer"))(
@@ -103,14 +106,17 @@ def main():
                            config.get("use_wandb"),
                            ema)
 
-        if epoch % config.get("evaluate_every") == 0:
+        if (epoch % config.get("evaluate_every") == 0 and
+                epoch >= config.get("start_eval_epoch")):
 
             if ema is not None:
                 eval_model = ema.ema_model
             else:
                 eval_model = model
 
-            samples = diffusion.sample(eval_model, 4, epoch)
+            samples = diffusion.sample(
+                eval_model, 4, epoch,
+                sampling_steps=config.get("sampling_steps"))
 
             current_fid = validation.validate(samples)
 

@@ -5,20 +5,21 @@ from tqdm import tqdm
 
 class Diffusion:
 
-    def __init__(self, beta_0, beta_t, timesteps, img_size, device, schedule,
-                 sampling_steps=None, use_wandb=False):
+    def __init__(self, betas, timesteps, img_size, device, use_wandb=False):
 
         self.use_wandb = use_wandb
 
         self.timesteps = timesteps
         self.image_size = img_size
-        self.sampling_steps = sampling_steps
 
-        if schedule == "linear":
-            self.betas = self.beta_schedule(beta_0, beta_t, timesteps)
-        elif schedule == "cosine":
-            self.betas = self.cosine_beta_schedule(timesteps)
-        self.alphas = 1. - self.betas
+        self.betas = betas
+        self.calculate_alphas(self.betas)
+
+        self.device = device
+
+    def calculate_alphas(self, betas):
+
+        self.alphas = 1. - betas
         self.alphas_cumprod = torch.cumprod(self.alphas, axis=0)
         self.alphas_cumprod_prev = torch.cat(
             (torch.ones(1), self.alphas_cumprod))[:-1]
@@ -31,31 +32,14 @@ class Diffusion:
         self.sqrt_recipm1_alphas_cumprod = torch.sqrt(
             1.0 / self.alphas_cumprod - 1)
 
-        self.posterior_variance = (self.betas *
+        self.posterior_variance = (betas *
                                    (1. - self.alphas_cumprod_prev) /
                                    (1. - self.alphas_cumprod))
 
         self.posterior_log_varaiance_clipped = torch.log(
             torch.cat(
                 (self.posterior_variance[1].view(1),
-                 self.posterior_variance[1:]))
-        )
-
-        self.device = device
-
-    def beta_schedule(self, start, end, timesteps):
-
-        return torch.linspace(start, end, timesteps)
-
-    def cosine_beta_schedule(self, timesteps, s=0.0008):
-
-        steps = timesteps + 1
-        x = torch.linspace(0, timesteps, steps)
-        alphas_cumprod = torch.cos(
-            ((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
-        alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
-        betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-        return torch.clip(betas, 0.0001, 0.9999)
+                 self.posterior_variance[1:])))
 
     def extract(self, a, t, x_shape):
         batch_size = t.shape[0]
@@ -78,7 +62,7 @@ class Diffusion:
         return (sqrt_alphas_cumprod_t * x_0 +
                 sqrt_one_minus_alphas_cumprod_t * noise), noise
 
-    def sample(self, model, n, epoch):
+    def sample(self, model, n, epoch, sampling_steps=None):
 
         model.eval()
         with torch.no_grad():
@@ -89,14 +73,32 @@ class Diffusion:
             x = x.to(self.device)
             samples = torch.cat((samples, x[0]), dim=2)
 
-            timesteps = (self.timesteps if self.sampling_steps is None
-                         else self.sampling_steps)
+            if sampling_steps is None:
+                timesteps = range(self.timesteps)
+            else:
+                timesteps = torch.round(
+                    torch.linspace(
+                        0, self.timesteps - 1, sampling_steps)).int()
+
+                last_alpha_cumprod = 1.0
+                original_betas = self.betas
+                new_betas = []
+                for i, alpha_cumprod in enumerate(self.alphas_cumprod):
+
+                    if i in timesteps:
+                        new_betas.append(
+                            1 - alpha_cumprod / last_alpha_cumprod)
+                        last_alpha_cumprod = alpha_cumprod
+                self.betas = torch.Tensor(new_betas)
+
+                self.calculate_alphas(self.betas)
 
             for t in tqdm(
-                 reversed(range(timesteps)), total=timesteps):
+                 reversed(range(len(timesteps))), total=len(timesteps)):
 
                 prediction = model(
-                    x.to(self.device), torch.full((n,), t).to(self.device))
+                    x.to(self.device),
+                    torch.full((n,), timesteps[t]).to(self.device))
 
                 if prediction.shape[1] == 6:
 
@@ -127,7 +129,7 @@ class Diffusion:
                     noise = torch.randn_like(x)
                     x = (model_mean + torch.sqrt(model_var) * noise)
 
-                if t % (timesteps / 10) == 0:
+                if t % (len(timesteps) / 10) == 0:
                     samples = torch.cat((samples, x[0]), dim=2)
 
             samples = (samples.clamp(-1, 1) + 1) / 2
@@ -141,6 +143,10 @@ class Diffusion:
 
             model.train()
             x = (x.clamp(-1, 1) + 1) / 2
+
+            # reset old betas after sampling
+            self.calculate_alphas(original_betas)
+            self.betas = original_betas
 
             return x
 
@@ -204,6 +210,20 @@ class Diffusion:
         model_mean, __ = self.q_posterior(x_t, pred_x_0, t)
 
         return model_mean, model_var
+
+
+def get_schedule(schedule, beta_0, beta_t, timesteps, s=0.008):
+
+    if schedule == "linear":
+        return torch.linspace(beta_0, beta_t, timesteps)
+    elif schedule == "cosine":
+        steps = timesteps + 1
+        x = torch.linspace(0, timesteps, steps)
+        alphas_cumprod = torch.cos(
+            ((x / timesteps) + s) / (1 + s) * torch.pi * 0.5) ** 2
+        alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
+        betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
+        return torch.clip(betas, 0.0001, 0.9999)
 
 
 # DEBUG
