@@ -32,7 +32,6 @@ class WearDataset(Dataset):
         ])
 
         self.target_transforms = transforms.Compose([
-            transforms.ToTensor(),
             transforms.CenterCrop(raw_img_size[0]),
             transforms.Resize(
                 img_size, interpolation=transforms.InterpolationMode.NEAREST),
@@ -47,24 +46,24 @@ class WearDataset(Dataset):
 
         inp = Image.open(f"{self.inputs[index]}")
         inp = self.transforms(inp)
-        # print(np.unique(inp))
 
         trg = np.load(self.targets[index])
-        trg = trg * 255 / 2
-        trg = trg[:, :, None].astype(np.uint8())
+        trg = torch.Tensor(trg / 2.0)
+
+        trg = trg[None]
 
         trg = self.target_transforms(trg)
 
-        return {"I": inp}
+        return {"I": inp, "O": trg}
 
 
 # DEBUG
-wear_dataset = WearDataset(
-    "data/RT100U_processed/train", (448, 576), (128, 128))
-wear_dataloader = DataLoader(wear_dataset, batch_size=4)
-for batch in wear_dataloader:
-    pass
-    # image = torch.moveaxis(batch["I"][0], 0, -1).numpy()
-    # image = (image + 1) / 2
-    # plt.imshow(image)
-    # plt.show()
+# wear_dataset = WearDataset(
+#     "data/RT100U_processed/train", (448, 576), (128, 128))
+# wear_dataloader = DataLoader(wear_dataset, batch_size=4)
+# for batch in wear_dataloader:
+#     # pass
+#     image = torch.moveaxis(batch["O"][0], 0, -1).numpy()
+#     image = (image + 1) / 2
+#     plt.imshow(image)
+#     plt.show()

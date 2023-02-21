@@ -5,12 +5,14 @@ from tqdm import tqdm
 
 class Diffusion:
 
-    def __init__(self, betas, timesteps, img_size, device, use_wandb=False):
+    def __init__(self, betas, timesteps, img_size, out_channels, device,
+                 use_wandb=False):
 
         self.use_wandb = use_wandb
 
         self.timesteps = timesteps
         self.image_size = img_size
+        self.out_channels = out_channels
 
         self.betas = betas
         self.calculate_alphas(self.betas)
@@ -69,7 +71,8 @@ class Diffusion:
 
             samples = torch.Tensor().to(self.device)
 
-            x = torch.randn((n, 3, self.image_size[0], self.image_size[1]))
+            x = torch.randn(
+                (n, self.out_channels, self.image_size[0], self.image_size[1]))
             x = x.to(self.device)
             samples = torch.cat((samples, x[0]), dim=2)
 
@@ -100,10 +103,10 @@ class Diffusion:
                     x.to(self.device),
                     torch.full((n,), timesteps[t]).to(self.device))
 
-                if prediction.shape[1] == 6:
+                if prediction.shape[1] == self.out_channels * 2:
 
-                    model_mean, model_var = (prediction[:, :3],
-                                             prediction[:, 3:])
+                    model_mean, model_var = (prediction[:, :self.out_channels],
+                                             prediction[:, self.out_channels:])
 
                     model_mean, model_var = self.p(
                         model_mean, model_var, x,
@@ -128,18 +131,6 @@ class Diffusion:
 
                     noise = torch.randn_like(x)
                     x = (model_mean + torch.sqrt(model_var) * noise)
-
-                if t % (len(timesteps) / 10) == 0:
-                    samples = torch.cat((samples, x[0]), dim=2)
-
-            samples = (samples.clamp(-1, 1) + 1) / 2
-            samples = (samples * 255).type(torch.uint8)
-
-            if self.use_wandb:
-
-                wandb.log({"Sample_evolution": wandb.Image(
-                    torch.moveaxis(samples, 0, -1).cpu().detach().numpy())},
-                    step=epoch, commit=False)
 
             model.train()
             x = (x.clamp(-1, 1) + 1) / 2

@@ -4,9 +4,10 @@ train_dataset = "data/RT100U_processed"
 
 raw_img_size = (448, 576)
 img_size = (64, 64)
+out_size = 4
 
-local = False
-use_wandb = False
+local = True
+use_wandb = True
 
 # Model config
 
@@ -14,14 +15,14 @@ beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 4000
 schedule = "cosine"
-model_dim = 128
+model_dim = 64
 dim_mults = (1, 2, 4, 8)
 num_resnet_blocks = 2
 
 
 # Train config
 
-batch_size = 32
+batch_size = 64
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
@@ -32,7 +33,7 @@ loss = "hybrid"
 
 # Eval config
 
-evaluate_every = 10
+evaluate_every = 1
 start_eval_epoch = 0
 sampling_steps = 100
 
@@ -46,6 +47,7 @@ config = {
     "train_dataset": train_dataset,
     "raw_img_size": raw_img_size,
     "img_size": img_size,
+    "out_size": out_size,
     "batch_size": batch_size,
     "optimizer": optimizer,
     "loss": loss,

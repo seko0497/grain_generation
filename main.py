@@ -1,3 +1,5 @@
+from matplotlib import cm
+import numpy as np
 import torch
 import wandb
 from config import config as config_dict
@@ -50,9 +52,13 @@ def main():
         config.get("img_size"),
         num_workers=config.get("num_workers"))
 
+    out_channels = (config.get("out_size") if config.get("loss") == "simple"
+                    else config.get("out_size") * 2)
+
     model = Unet(config.get("model_dim"),
                  device,
-                 out_channels=3 if config.get("loss") == "simple" else 6,
+                 out_channels=out_channels,
+                 in_channels=config.get("out_size"),
                  dim_mults=config.get("dim_mults"),
                  num_resnet_blocks=config.get("num_resnet_blocks"))
 
@@ -75,6 +81,7 @@ def main():
         betas,
         config.get("timesteps"),
         config.get("img_size"),
+        config.get("out_size"),
         device,
         use_wandb=config.get("use_wandb"))
 
@@ -118,7 +125,7 @@ def main():
                 eval_model, 4, epoch,
                 sampling_steps=config.get("sampling_steps"))
 
-            current_fid = validation.validate(samples)
+            current_fid = validation.validate(samples[:, :3])
 
             if current_fid <= best["fid"]:
                 best["epoch"] = epoch
@@ -131,13 +138,21 @@ def main():
                     'loss': loss}, "wear_generation/best.pth")
 
             if config.get("use_wandb"):
-                wandb.save("wear_generation/best.pth")
+                # wandb.save("wear_generation/best.pth")
+
+                sample = samples[0].cpu().detach().numpy()
+                sample_image = np.moveaxis(sample[:3], 0, -1)
+
+                sample_mask = sample[-1]
+                cmap = cm.get_cmap("viridis")
+                sample_mask = cmap(sample_mask)[:, :, :3]
+
+                sample = np.vstack((sample_image, sample_mask))
+
                 wandb.log({"FID": current_fid,
                            "best_epoch": best["epoch"],
                            "best_fid": best["fid"],
-                           "Sample": wandb.Image(
-                                torch.moveaxis(
-                                 samples[0], 0, -1).cpu().detach().numpy())},
+                           "Sample": wandb.Image(sample)},
                           step=epoch, commit=False)
 
         if config.get("use_wandb"):
