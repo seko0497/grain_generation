@@ -4,13 +4,14 @@ import torch
 from diffusion import Diffusion, get_schedule
 from unet import Unet
 from PIL import Image
+from validate import Validation
 
 checkpoint = torch.load("wear_generation/best.pth")
-wandb_name = "aflame-candles-301"
+wandb_name = "drawn-totem-311"
 
-img_size = (64, 64)
+img_size = (256, 256)
 
-model_dim = 128
+model_dim = 64
 dim_mults = (1, 2, 4, 8)
 num_resnet_blocks = 2
 
@@ -18,11 +19,11 @@ beta_0 = 0.000025
 beta_t = 0.005
 timesteps = 4000
 schedule = "cosine"
-sampling_steps = 100
+sampling_steps = 250
 
 loss = "hybrid"
 
-grid = False
+grid = True
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -44,19 +45,31 @@ diffusion = Diffusion(
     device,
     use_wandb=False)
 
-samples = diffusion.sample(model, 9, checkpoint["epoch"], sampling_steps)
+all_samples = torch.Tensor([]).to(device)
+validation = Validation("data/RT100U_processed/train",
+                        (448, 576), (64, 64), 0)
+
+# for _ in range(7):
+
+samples = diffusion.sample(model, 4, checkpoint["epoch"], sampling_steps)
+    # all_samples = torch.cat((all_samples, samples))
+
+
+# current_fid = validation.valid_fid(all_samples)
+# print(current_fid)
+# quit()
 
 save_folder = f"wear_generation/samples/{wandb_name}"
 
 if grid:
 
-    fig, axs = plt.subplots(nrows=3, ncols=3, figsize=(10, 10))
+    fig, axs = plt.subplots(nrows=2, ncols=2, figsize=(10, 10))
     for ax in axs.flatten():
         ax.axis('off')
 
     image_idx = 0
-    for i in range(3):
-        for j in range(3):
+    for i in range(2):
+        for j in range(2):
             print(image_idx)
             sample = (samples[image_idx] * 255).type(torch.uint8)
             sample = torch.moveaxis(sample, 0, -1).cpu().detach().numpy()
@@ -64,7 +77,8 @@ if grid:
             image_idx += 1
 
     plt.subplots_adjust(wspace=0, hspace=0)
-    plt.savefig(f'{save_folder}/image_grid.png')
+    plt.show()
+    # plt.savefig(f'{save_folder}/image_grid.png')
 
 else:
 
