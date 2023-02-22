@@ -8,6 +8,8 @@ img_size = (256, 256)
 local = False
 use_wandb = True
 
+checkpoint = "wear_generation/best.pth"
+
 # Model config
 
 beta_0 = 0.0001
@@ -33,8 +35,8 @@ pred_mask = "naive"
 
 # Eval config
 
-evaluate_every = 25
-start_eval_epoch = 600
+evaluate_every = 100
+start_eval_epoch = 300
 sampling_steps = 100
 
 random_seed = 1234
@@ -60,6 +62,7 @@ config = {
     "start_eval_epoch": start_eval_epoch,
     "sampling_steps": sampling_steps,
     "use_wandb": use_wandb,
+    "checkpoint": checkpoint,
     "beta_0": beta_0,
     "beta_t": beta_t,
     "timesteps": timesteps,

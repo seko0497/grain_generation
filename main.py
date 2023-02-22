@@ -68,6 +68,11 @@ def main():
     out_channels = (in_channels * 2 if config.get("loss") == "hybrid"
                     else in_channels)
 
+    checkpoint = None
+    if config.get("checkpoint"):
+        checkpoint = torch.load(config.get("checkpoint"))
+        print(f"loaded checkpoint {config.get('checkpoint')}")
+
     model = Unet(config.get("model_dim"),
                  device,
                  in_channels=in_channels,
@@ -77,7 +82,8 @@ def main():
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.parallel.DataParallel(model)
-
+    if checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
 
     if config.get("ema"):
@@ -105,6 +111,9 @@ def main():
         betas=[0.0, 0.999]
     )
 
+    if checkpoint:
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
     if config.get("loss") == "simple":
         loss = torch.nn.MSELoss()
     elif config.get("loss") == "hybrid":
@@ -114,8 +123,14 @@ def main():
         wandb.watch(model, log="all")
 
     best = {"epoch": 0, "fid": torch.inf}
+    if checkpoint:
+        best["epoch"] = checkpoint["epoch"]
 
     for epoch in range(1, config.get("epochs") + 1):
+
+        if checkpoint:
+            epoch += checkpoint["epoch"]
+
         epoch_loss = train(model,
                            diffusion,
                            config.get("timesteps"),
@@ -156,6 +171,7 @@ def main():
                     'epoch': epoch,
                     'model_state_dict': eval_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
+                    'FID': current_fid,
                     'loss': loss}, f"wear_generation/best.pth")
 
                 if config.get("use_wandb"):
@@ -172,17 +188,18 @@ def main():
                     wandb.log({"Sample": wandb.Image(sample)},
                               step=epoch, commit=False)
 
-                wandb.log({"FID": current_fid,
-                           "best_epoch": best["epoch"],
-                           "best_fid": best["fid"]},
-                          step=epoch, commit=False)
+            wandb.log({"FID": current_fid,
+                       "best_epoch": best["epoch"],
+                       "best_fid": best["fid"]},
+                      step=epoch, commit=False)
 
         valid_loss = validation.valid_hybrid_loss(
                 model, valid_loader, device, diffusion, config.get("timesteps")
             )
 
         if config.get("use_wandb"):
-            wandb.log({"train_loss": epoch_loss, "valid_loss": valid_loss})
+            wandb.log({"train_loss": epoch_loss,
+                       "valid_loss": valid_loss}, step=epoch)
 
 
 class Config():
