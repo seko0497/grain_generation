@@ -143,25 +143,39 @@ class WeightStandardizedCOnv2d(nn.Conv2d):
 
 class Block(nn.Module):
 
-    def __init__(self, in_channels, out_channels, groups=8):
+    def __init__(self, in_channels, out_channels, groups=8, dropout=None):
         super().__init__()
         self.conv = WeightStandardizedCOnv2d(
             in_channels, out_channels, 3, padding=1)
         self.group_norm = nn.GroupNorm(groups, out_channels)
         self.silu = nn.SiLU()
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, scale_shift=None):
 
-        x = self.group_norm(self.conv(x))
+        x = self.group_norm(x)
 
-        if scale_shift is not None:
-
+        if scale_shift:
             x = x * (scale_shift[0] + 1)
             x += scale_shift[1]
 
-        x = self.silu(x)
+        x = self.silu()
 
-        return x
+        if self.dropout:
+            x = self.dropout(x)
+
+        return self.conv(x)
+
+        # x = self.group_norm(self.conv(x))
+
+        # if scale_shift is not None:
+
+        #     x = x * (scale_shift[0] + 1)
+        #     x += scale_shift[1]
+
+        # x = self.silu(x)
+
+        # return x
 
 
 class PreNorm(nn.Module):
