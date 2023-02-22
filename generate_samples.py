@@ -24,7 +24,7 @@ beta_0 = 0.000025
 beta_t = 0.005
 timesteps = 4000
 schedule = "cosine"
-sampling_steps = 100
+sampling_steps = 1000
 
 loss = "hybrid"
 pred_mask = "naive"

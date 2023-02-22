@@ -36,7 +36,7 @@ pred_mask = "naive"
 # Eval config
 
 evaluate_every = 100
-start_eval_epoch = 300
+start_eval_epoch = 3000
 sampling_steps = 100
 
 random_seed = 1234
