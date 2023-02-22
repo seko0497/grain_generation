@@ -6,14 +6,16 @@ from tqdm import tqdm
 
 class Diffusion:
 
-    def __init__(self, betas, timesteps, img_size, out_channels, device,
-                 use_wandb=False):
+    def __init__(self, betas, timesteps, img_size, in_channels, device,
+                 predict_mask=None, use_wandb=False):
 
         self.use_wandb = use_wandb
 
+        self.predict_mask = predict_mask
+
         self.timesteps = timesteps
         self.image_size = img_size
-        self.out_channels = out_channels
+        self.in_channels = in_channels
 
         self.betas = betas
         self.calculate_alphas(self.betas)
@@ -75,7 +77,7 @@ class Diffusion:
             samples = torch.Tensor().to(self.device)
 
             x = torch.randn(
-                (n, self.out_channels, self.image_size[0], self.image_size[1]))
+                (n, self.in_channels, self.image_size[0], self.image_size[1]))
             x = x.to(self.device)
             samples = torch.cat((samples, x[0]), dim=2)
 
@@ -106,10 +108,10 @@ class Diffusion:
                     x.to(self.device),
                     torch.full((n,), timesteps[t]).to(self.device))
 
-                if prediction.shape[1] == self.out_channels * 2:
+                if prediction.shape[1] == self.in_channels * 2:
 
-                    model_mean, model_var = (prediction[:, :self.out_channels],
-                                             prediction[:, self.out_channels:])
+                    model_mean, model_var = (prediction[:, :self.in_channels],
+                                             prediction[:, self.in_channels:])
 
                     model_mean, model_var = self.p(
                         model_mean, model_var, x,
@@ -199,6 +201,12 @@ class Diffusion:
         pred_x_0 = (sqrt_recip_alphas_cumprod_t * x_t
                     - sqrt_recipm1_alphas_cumprod_t * model_mean)
         pred_x_0 = pred_x_0.clamp(-1, 1)
+
+        if pred_x_0.shape[1] == 4:
+
+            pred_x_0[:, -1] += 1
+            pred_x_0[:, -1] = torch.round(pred_x_0[:, -1])
+            pred_x_0[:, -1] -= 1
 
         # get q_posterior mean of predicted x_0
         model_mean, __ = self.q_posterior(x_t, pred_x_0, t)

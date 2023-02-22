@@ -9,9 +9,10 @@ import os
 
 class WearDataset(Dataset):
 
-    def __init__(self, root_dir, raw_img_size, img_size):
+    def __init__(self, root_dir, raw_img_size, img_size, mask=False):
 
         self.root_dir = root_dir
+        self.mask = mask
 
         self.files = [
             os.path.splitext(
@@ -47,14 +48,19 @@ class WearDataset(Dataset):
         inp = Image.open(f"{self.inputs[index]}")
         inp = self.transforms(inp)
 
-        trg = np.load(self.targets[index])
-        trg = torch.Tensor(trg / 2.0)
+        if self.mask:
 
-        trg = trg[None]
+            trg = np.load(self.targets[index])
+            trg = torch.Tensor(trg / 2.0)
 
-        trg = self.target_transforms(trg)
+            trg = trg[None]
 
-        return {"I": inp, "O": trg}
+            trg = self.target_transforms(trg)
+
+            return {"I": torch.cat((inp, trg))}
+
+        else:
+            return {"I": inp}
 
 
 # DEBUG

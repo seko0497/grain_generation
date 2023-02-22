@@ -28,8 +28,8 @@ class Validation():
 
     def fit_real_samples(self):
 
-        fid_loader = DataLoader(WearDataset(
-            self.real_samples_dir,
+        fid_loader_train = DataLoader(WearDataset(
+            f"{self.real_samples_dir}/train",
             raw_img_size=self.raw_img_size,
             img_size=self.image_size
         ), batch_size=115,
@@ -37,7 +37,21 @@ class Validation():
             persistent_workers=True if self.num_workers > 0 else False,
             pin_memory=True,
             shuffle=False)
-        for batch in fid_loader:
+        for batch in fid_loader_train:
+            real_samples = (batch["I"] + 1) / 2
+
+        self.fid.update(real_samples, real=True)
+
+        fid_loader_valid = DataLoader(WearDataset(
+            f"{self.real_samples_dir}/valid",
+            raw_img_size=self.raw_img_size,
+            img_size=self.image_size
+        ), batch_size=9,
+            num_workers=self.num_workers,
+            persistent_workers=True if self.num_workers > 0 else False,
+            pin_memory=True,
+            shuffle=False)
+        for batch in fid_loader_valid:
             real_samples = (batch["I"] + 1) / 2
 
         self.fid.update(real_samples, real=True)
@@ -119,11 +133,12 @@ class Validation():
             true_mean, true_log_var_clipped = diffusion.q_posterior(
                 noisy_image, x_0, t)
             out_mean, out_var = diffusion.p(
-                output[:, :3], output[:, 3:], noisy_image, t, learned_var=True)
+                output[:, :x_0.shape[1]], output[:, x_0.shape[1]:],
+                noisy_image, t, learned_var=True)
 
             loss_fn = HybridLoss()
             loss = loss_fn(
-                noise, output[:, :3], x_0, t.to(device), true_mean,
+                noise, output[:, :x_0.shape[1]], x_0, t.to(device), true_mean,
                 true_log_var_clipped, out_mean, out_var)
 
             epoch_loss += loss.item()

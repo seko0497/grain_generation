@@ -39,7 +39,8 @@ def main():
     train_loader = DataLoader(WearDataset(
         f"{config.get('train_dataset')}/train",
         raw_img_size=config.get('raw_img_size'),
-        img_size=config.get('img_size')
+        img_size=config.get('img_size'),
+        mask=True if config.get("pred_mask") is not None else False
     ), batch_size=config.get("batch_size"),
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
@@ -49,7 +50,8 @@ def main():
     valid_loader = DataLoader(WearDataset(
         f"{config.get('train_dataset')}/valid",
         raw_img_size=config.get('raw_img_size'),
-        img_size=config.get('img_size')
+        img_size=config.get('img_size'),
+        mask=True if config.get("pred_mask") is not None else False
     ), batch_size=config.get("batch_size"),
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
@@ -57,18 +59,19 @@ def main():
         shuffle=True)
 
     validation = Validation(
-        f"{config.get('train_dataset')}/train",
+        config.get('train_dataset'),
         config.get("raw_img_size"),
         config.get("img_size"),
         num_workers=config.get("num_workers"))
 
-    out_channels = (config.get("out_size") if config.get("loss") == "simple"
-                    else config.get("out_size") * 2)
+    in_channels = 3 if config.get("pred_mask") is None else 4
+    out_channels = (in_channels * 2 if config.get("loss") == "hybrid"
+                    else in_channels)
 
     model = Unet(config.get("model_dim"),
                  device,
+                 in_channels=in_channels,
                  out_channels=out_channels,
-                 in_channels=config.get("out_size"),
                  dim_mults=config.get("dim_mults"),
                  num_resnet_blocks=config.get("num_resnet_blocks"))
 
@@ -91,8 +94,9 @@ def main():
         betas,
         config.get("timesteps"),
         config.get("img_size"),
-        config.get("out_size"),
+        in_channels,
         device,
+        predict_mask=config.get("pred_mask"),
         use_wandb=config.get("use_wandb"))
 
     optimizer = getattr(torch.optim, config.get("optimizer"))(
@@ -100,10 +104,6 @@ def main():
         lr=config.get("learning_rate"),
         betas=[0.0, 0.999]
     )
-
-    checkpoint = torch.load("wear_generation/best.pth")
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
     if config.get("loss") == "simple":
         loss = torch.nn.MSELoss()
@@ -116,7 +116,6 @@ def main():
     best = {"epoch": 0, "fid": torch.inf}
 
     for epoch in range(1, config.get("epochs") + 1):
-        epoch += checkpoint["epoch"]
         epoch_loss = train(model,
                            diffusion,
                            config.get("timesteps"),
@@ -138,10 +137,14 @@ def main():
 
             eval_model.eval()
 
-            samples = diffusion.sample(
-                eval_model, 4, epoch,
-                sampling_steps=config.get("sampling_steps"))
+            samples = []
 
+            for _ in range(128 // config.get("batch_size")):
+                samples.append(diffusion.sample(
+                    eval_model, config.get("batch_size"), epoch,
+                    sampling_steps=config.get("sampling_steps")))
+
+            samples = torch.cat(samples)
             current_fid = validation.valid_fid(samples[:, :3])
             eval_model.train()
 
@@ -153,24 +156,25 @@ def main():
                     'epoch': epoch,
                     'model_state_dict': eval_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss}, f"wear_generation/best_{epoch}.pth")
+                    'loss': loss}, f"wear_generation/best.pth")
 
-            if config.get("use_wandb"):
-                # wandb.save("wear_generation/best.pth")
+                if config.get("use_wandb"):
+                    wandb.save("wear_generation/best.pth")
 
-                sample = samples[0].cpu().detach().numpy()
-                sample_image = np.moveaxis(sample[:3], 0, -1)
+                    sample = samples[0].cpu().detach().numpy()
+                    sample_image = np.moveaxis(sample[:3], 0, -1)
 
-                sample_mask = sample[-1]
-                cmap = cm.get_cmap("viridis")
-                sample_mask = cmap(sample_mask)[:, :, :3]
+                    sample_mask = sample[-1]
+                    cmap = cm.get_cmap("viridis")
+                    sample_mask = cmap(sample_mask)[:, :, :3]
 
-                sample = np.vstack((sample_image, sample_mask))
+                    sample = np.vstack((sample_image, sample_mask))
+                    wandb.log({"Sample": wandb.Image(sample)},
+                              step=epoch, commit=False)
 
                 wandb.log({"FID": current_fid,
                            "best_epoch": best["epoch"],
-                           "best_fid": best["fid"],
-                           "Sample": wandb.Image(sample)},
+                           "best_fid": best["fid"]},
                           step=epoch, commit=False)
 
         valid_loss = validation.valid_hybrid_loss(

@@ -15,7 +15,7 @@ def train(
 
     for batch_idx, batch in enumerate(tqdm(data_loader)):
 
-        x_0 = torch.cat((batch["I"], batch["O"]), dim=1).to(device)
+        x_0 = batch["I"].to(device)
 
         t = torch.randint(
             0, timesteps, (x_0.shape[0],), dtype=torch.int64)
