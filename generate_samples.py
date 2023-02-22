@@ -8,8 +8,10 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from dataset_wear import WearDataset
 
-checkpoint = torch.load("wear_generation/best_1700.pth")
-wandb_name = "graceful-vortex-312"
+from validate import Validation
+
+checkpoint = torch.load("wear_generation/best.pth")
+wandb_name = "drawn-totem-311"
 
 img_size = (256, 256)
 
@@ -48,7 +50,19 @@ diffusion = Diffusion(
     device,
     use_wandb=False)
 
+all_samples = torch.Tensor([]).to(device)
+validation = Validation("data/RT100U_processed/train",
+                        (448, 576), (64, 64), 0)
+
+# for _ in range(7):
+
 samples = diffusion.sample(model, 4, checkpoint["epoch"], sampling_steps)
+# all_samples = torch.cat((all_samples, samples))
+
+
+# current_fid = validation.valid_fid(all_samples)
+# print(current_fid)
+# quit()
 
 save_folder = f"wear_generation/samples/{wandb_name}"
 

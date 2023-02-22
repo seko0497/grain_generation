@@ -26,7 +26,7 @@ batch_size = 64
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
-epochs = 3000
+epochs = 2000
 ema = False
 num_workers = 12
 loss = "hybrid"
@@ -41,7 +41,7 @@ random_seed = 1234
 
 if local:
     num_workers = 0
-    batch_size = 1
+    batch_size = 4
 
 config = {
     "train_dataset": train_dataset,

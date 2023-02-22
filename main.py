@@ -46,6 +46,16 @@ def main():
         pin_memory=True,
         shuffle=True)
 
+    valid_loader = DataLoader(WearDataset(
+        f"{config.get('train_dataset')}/valid",
+        raw_img_size=config.get('raw_img_size'),
+        img_size=config.get('img_size')
+    ), batch_size=config.get("batch_size"),
+        num_workers=config.get("num_workers"),
+        persistent_workers=persistent_workers,
+        pin_memory=True,
+        shuffle=True)
+
     validation = Validation(
         f"{config.get('train_dataset')}/train",
         config.get("raw_img_size"),
@@ -91,6 +101,10 @@ def main():
         betas=[0.0, 0.999]
     )
 
+    checkpoint = torch.load("wear_generation/best.pth")
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
     if config.get("loss") == "simple":
         loss = torch.nn.MSELoss()
     elif config.get("loss") == "hybrid":
@@ -102,6 +116,7 @@ def main():
     best = {"epoch": 0, "fid": torch.inf}
 
     for epoch in range(1, config.get("epochs") + 1):
+        epoch += checkpoint["epoch"]
         epoch_loss = train(model,
                            diffusion,
                            config.get("timesteps"),
@@ -121,11 +136,14 @@ def main():
             else:
                 eval_model = model
 
+            eval_model.eval()
+
             samples = diffusion.sample(
                 eval_model, 4, epoch,
                 sampling_steps=config.get("sampling_steps"))
 
-            current_fid = validation.validate(samples[:, :3])
+            current_fid = validation.valid_fid(samples[:, :3])
+            eval_model.train()
 
             if current_fid <= best["fid"]:
                 best["epoch"] = epoch
@@ -135,7 +153,7 @@ def main():
                     'epoch': epoch,
                     'model_state_dict': eval_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'loss': loss}, "wear_generation/best.pth")
+                    'loss': loss}, f"wear_generation/best_{epoch}.pth")
 
             if config.get("use_wandb"):
                 # wandb.save("wear_generation/best.pth")
@@ -155,8 +173,12 @@ def main():
                            "Sample": wandb.Image(sample)},
                           step=epoch, commit=False)
 
+        valid_loss = validation.valid_hybrid_loss(
+                model, valid_loader, device, diffusion, config.get("timesteps")
+            )
+
         if config.get("use_wandb"):
-            wandb.log({"train_loss": epoch_loss})
+            wandb.log({"train_loss": epoch_loss, "valid_loss": valid_loss})
 
 
 class Config():

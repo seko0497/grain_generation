@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import wandb
 from tqdm import tqdm
@@ -42,6 +43,8 @@ class Diffusion:
             torch.cat(
                 (self.posterior_variance[1].view(1),
                  self.posterior_variance[1:])))
+
+        self.log_one_minus_alphas_cumprod = np.log(1.0 - self.alphas_cumprod)
 
     def extract(self, a, t, x_shape):
         batch_size = t.shape[0]
@@ -201,6 +204,16 @@ class Diffusion:
         model_mean, __ = self.q_posterior(x_t, pred_x_0, t)
 
         return model_mean, model_var
+
+    def q(self, x_0, t):
+
+        mean = self.extract(self.sqrt_alphas_cumprod, t, x_0.shape) * x_0
+        variance = self.extract(1.0 - self.alphas_cumprod, t, x_0.shape)
+
+        log_variance = self.extract(
+            self.log_one_minus_alphas_cumprod, t, x_0.shape)
+
+        return mean, variance, log_variance
 
 
 def get_schedule(schedule, beta_0, beta_t, timesteps, s=0.008):
