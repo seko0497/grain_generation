@@ -12,25 +12,25 @@ from dataset_wear import WearDataset
 from validate import Validation
 
 checkpoint = torch.load("wear_generation/best.pth")
-wandb_name = "vital-cherry-338"
+wandb_name = "rose-universe-350"
 
 img_size = (256, 256)
 
-model_dim = 64
-dim_mults = (1, 2, 4, 8)
+model_dim = 128
+dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 
-beta_0 = 0.000025
-beta_t = 0.005
-timesteps = 4000
-schedule = "cosine"
-sampling_steps = 1000
+beta_0 = 0.0001
+beta_t = 0.02
+timesteps = 1000
+schedule = "linear"
+sampling_steps = 100
 
 loss = "hybrid"
 pred_mask = "naive"
 
-grid = True
-grid_size = [2, 2]
+grid = False
+grid_size = [4, 4]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -60,8 +60,13 @@ diffusion = Diffusion(
     use_wandb=False)
 
 num_samples = grid_size[0] * grid_size[1]
-samples = diffusion.sample(
-    model, num_samples, checkpoint["epoch"], sampling_steps)
+all_samples = []
+for _ in range(num_samples):
+    samples = diffusion.sample(
+        model, 1, checkpoint["epoch"], sampling_steps)
+    all_samples.append(samples[0])
+samples = torch.stack(all_samples)
+
 if pred_mask is not None:
     samples = samples.cpu().detach()
     sample_images = samples[:, :3]
@@ -76,6 +81,7 @@ if pred_mask is not None:
     samples = torch.cat((sample_images, torch.Tensor(sample_masks)), dim=2)
 
 save_folder = f"wear_generation/samples/{wandb_name}"
+
 
 if grid:
 
@@ -98,7 +104,8 @@ if grid:
 
 else:
 
-    for i, sample in samples:
+    for i, sample in enumerate(samples):
+        i += 2
         sample = (sample * 255).type(torch.uint8)
         sample = torch.moveaxis(sample, 0, -1).cpu().detach().numpy()
         image = Image.fromarray(sample)

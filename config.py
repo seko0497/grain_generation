@@ -8,22 +8,23 @@ img_size = (256, 256)
 local = False
 use_wandb = True
 
-checkpoint = "wear_generation/best.pth"
+checkpoint = None
 
 # Model config
 
 beta_0 = 0.0001
 beta_t = 0.02
-timesteps = 4000
-schedule = "cosine"
-model_dim = 64
-dim_mults = (1, 2, 4, 8)
+timesteps = 1000
+schedule = "linear"
+model_dim = 128
+dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
+dropout = 0.1
 
 
 # Train config
 
-batch_size = 8
+batch_size = 4
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
@@ -36,7 +37,7 @@ pred_mask = "naive"
 # Eval config
 
 evaluate_every = 100
-start_eval_epoch = 3000
+start_eval_epoch = 300
 sampling_steps = 100
 
 random_seed = 1234
@@ -69,5 +70,6 @@ config = {
     "schedule": schedule,
     "model_dim": model_dim,
     "dim_mults": dim_mults,
-    "num_resnet_blocks": num_resnet_blocks
+    "num_resnet_blocks": num_resnet_blocks,
+    "dropout": dropout
 }

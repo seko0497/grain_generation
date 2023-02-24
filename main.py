@@ -78,7 +78,8 @@ def main():
                  in_channels=in_channels,
                  out_channels=out_channels,
                  dim_mults=config.get("dim_mults"),
-                 num_resnet_blocks=config.get("num_resnet_blocks"))
+                 num_resnet_blocks=config.get("num_resnet_blocks"),
+                 dropout=config.get("dropout"))
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.parallel.DataParallel(model)

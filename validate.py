@@ -128,7 +128,8 @@ class Validation():
             noisy_image = noisy_image.to(device)
             noise = noise.to(device)
 
-            output = model(noisy_image, t.to(device))
+            with torch.no_grad():
+                output = model(noisy_image, t.to(device))
 
             true_mean, true_log_var_clipped = diffusion.q_posterior(
                 noisy_image, x_0, t)
