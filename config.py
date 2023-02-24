@@ -14,11 +14,12 @@ checkpoint = None
 
 beta_0 = 0.0001
 beta_t = 0.02
-timesteps = 4000
-schedule = "cosine"
+timesteps = 1000
+schedule = "linear"
 model_dim = 128
-dim_mults = (1, 2, 4, 8)
+dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
+dropout = 0.1
 
 
 # Train config
@@ -36,7 +37,7 @@ pred_mask = "naive"
 # Eval config
 
 evaluate_every = 100
-start_eval_epoch = 600
+start_eval_epoch = 300
 sampling_steps = 100
 
 random_seed = 1234
@@ -69,5 +70,6 @@ config = {
     "schedule": schedule,
     "model_dim": model_dim,
     "dim_mults": dim_mults,
-    "num_resnet_blocks": num_resnet_blocks
+    "num_resnet_blocks": num_resnet_blocks,
+    "dropout": dropout
 }

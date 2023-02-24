@@ -8,7 +8,8 @@ from functools import partial
 class Unet(nn.Module):
 
     def __init__(self, dim, device, dim_mults=(1, 2, 4, 8), in_channels=3,
-                 out_channels=3, resnet_block_groups=4, num_resnet_blocks=2):
+                 out_channels=3, resnet_block_groups=32, num_resnet_blocks=2,
+                 attention_dims=(32, 16, 8), dropout=0.0):
 
         super().__init__()
 
@@ -26,6 +27,8 @@ class Unet(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim)
         )
 
+        self.attention_dims = attention_dims
+
         self.downs = nn.ModuleList([])
         self.ups = nn.ModuleList([])
 
@@ -38,18 +41,21 @@ class Unet(nn.Module):
 
             self.downs.append(nn.ModuleList([
                 nn.ModuleList([ResnetBlock(
-                    dim_in, dim_in, time_emb_dim, resnet_block_groups)
+                    dim_in, dim_in, time_emb_dim, resnet_block_groups,
+                    dropout=dropout)
                     for _ in range(num_resnet_blocks)]),
-                Residual(PreNorm(dim_in, LinearAttention(dim_in))),
+                Residual(PreNorm(dim_in, Attention(dim_in))),
                 Downsample(dim_in, dim_out) if not is_last
                 else nn.Conv2d(dim_in, dim_out, 3, padding=1)
             ]))
 
         self.head1 = ResnetBlock(
-            dims[-1], dims[-1], time_emb_dim, resnet_block_groups)
+            dims[-1], dims[-1], time_emb_dim, resnet_block_groups,
+            dropout=dropout)
         self.head_attention = Residual(PreNorm(dims[-1], Attention(dims[-1])))
         self.head2 = ResnetBlock(
-            dims[-1], dims[-1], time_emb_dim, resnet_block_groups)
+            dims[-1], dims[-1], time_emb_dim, resnet_block_groups,
+            dropout=dropout)
 
         for i, (dim_in, dim_out) in enumerate(reversed(in_out)):
 
@@ -62,15 +68,16 @@ class Unet(nn.Module):
                 nn.ModuleList([ResnetBlock(
                     dim_out + dim_in, dim_out,
                     time_emb_dim,
-                    resnet_block_groups
+                    resnet_block_groups,
+                    dropout=dropout
                 )for _ in range(num_resnet_blocks)]),
-                Residual(PreNorm(dim_out, LinearAttention(dim_out))),
+                Residual(PreNorm(dim_out, Attention(dim_out))),
                 Upsample(dim_out, dim_in) if not is_last
                 else nn.Conv2d(dim_out, dim_in, 3, padding=1)
             ]))
 
         self.final_block = ResnetBlock(
-            dim * 2, dim, time_emb_dim, resnet_block_groups)
+            dim * 2, dim, time_emb_dim, resnet_block_groups, dropout=dropout)
         self.final_conv = nn.Conv2d(dim, out_channels, 1)
 
     def forward(self, x, t):
@@ -81,6 +88,7 @@ class Unet(nn.Module):
         t = self.time_mlp(t)
 
         h = []
+        ds = 1
 
         for blocks, attention, downsample in self.downs:
 
@@ -90,10 +98,12 @@ class Unet(nn.Module):
                 h.append(x)
 
             x = blocks[-1](x, t)
-            x = attention(x)
+            if ds in self.attention_dims:
+                x = attention(x)
             h.append(x)
 
             x = downsample(x)
+            ds *= 2
 
         x = self.head1(x, t)
         x = self.head_attention(x)
@@ -107,9 +117,11 @@ class Unet(nn.Module):
 
             x = torch.cat((x, h.pop()), dim=1)
             x = blocks[-1](x, t)
-            x = attention(x)
+            if ds in self.attention_dims:
+                x = attention(x)
 
             x = upsample(x)
+            ds //= 2
 
         x = torch.cat((x, residual), dim=1)
 
@@ -143,25 +155,29 @@ class WeightStandardizedCOnv2d(nn.Conv2d):
 
 class Block(nn.Module):
 
-    def __init__(self, in_channels, out_channels, groups=8):
+    def __init__(self, in_channels, out_channels, groups=8, dropout=None):
         super().__init__()
-        self.conv = WeightStandardizedCOnv2d(
-            in_channels, out_channels, 3, padding=1)
-        self.group_norm = nn.GroupNorm(groups, out_channels)
+
+        self.group_norm = nn.GroupNorm(groups, in_channels)
         self.silu = nn.SiLU()
+        self.dropout = nn.Dropout(dropout) if dropout else None
+
+        self.conv = nn.Conv2d(in_channels, out_channels, 3, padding=1)
 
     def forward(self, x, scale_shift=None):
 
-        x = self.group_norm(self.conv(x))
+        x = self.group_norm(x)
 
-        if scale_shift is not None:
-
+        if scale_shift:
             x = x * (scale_shift[0] + 1)
             x += scale_shift[1]
 
         x = self.silu(x)
 
-        return x
+        if self.dropout:
+            x = self.dropout(x)
+
+        return self.conv(x)
 
 
 class PreNorm(nn.Module):
@@ -177,7 +193,8 @@ class PreNorm(nn.Module):
 
 class ResnetBlock(nn.Module):
 
-    def __init__(self, in_channels, out_channels, time_emb_dim, groups=8):
+    def __init__(self, in_channels, out_channels, time_emb_dim, groups=8,
+                 dropout=0.0):
 
         super().__init__()
 
@@ -187,8 +204,11 @@ class ResnetBlock(nn.Module):
             nn.Linear(time_emb_dim, out_channels * 2)
         )
 
+        self.dropout = dropout
+
         self.block1 = Block(in_channels, out_channels, groups=groups)
-        self.block2 = Block(out_channels, out_channels, groups=groups)
+        self.block2 = Block(out_channels, out_channels, groups=groups,
+                            dropout=dropout)
         self.res_conv = nn.Conv2d(in_channels, out_channels, 1)
 
     def forward(self, x, time_emb):
@@ -197,69 +217,69 @@ class ResnetBlock(nn.Module):
         time_emb = einops.rearrange(time_emb, "b c -> b c 1 1")
         scale_shift = time_emb.chunk(2, dim=1)
 
-        h = self.block1(x, scale_shift)
-        h = self.block2(h)
+        h = self.block1(x)
+        h = self.block2(h, scale_shift)
         return h + self.res_conv(x)
 
 
+class QKVAttention(nn.Module):
+
+    # ported from
+    # ("https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/unet.py")"
+
+    def __init__(self, n_heads):
+        super().__init__()
+        self.n_heads = n_heads
+
+    def forward(self, qkv):
+
+        bs, width, length = qkv.shape
+        assert width % (3 * self.n_heads) == 0
+        ch = width // (3 * self.n_heads)
+        q, k, v = qkv.chunk(3, dim=1)
+        scale = 1 / math.sqrt(math.sqrt(ch))
+        weight = torch.einsum(
+            "bct,bcs->bts",
+            (q * scale).view(bs * self.n_heads, ch, length),
+            (k * scale).view(bs * self.n_heads, ch, length),
+        )
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+        a = torch.einsum(
+            "bts,bcs->bct", weight, v.reshape(bs * self.n_heads, ch, length))
+        return a.reshape(bs, -1, length)
+
+
 class Attention(nn.Module):
-    def __init__(self, dim, heads=4, dim_head=32):
+
+    # ported from
+    # ("https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/unet.py")"
+
+    def __init__(self, channels, num_heads=4, num_head_channels=32, groups=8):
+
         super().__init__()
-        self.scale = dim_head**-0.5
-        self.heads = heads
-        hidden_dim = dim_head * heads
-        self.to_qkv = nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
-        self.to_out = nn.Conv2d(hidden_dim, dim, 1)
+        self.channels = channels
+        if num_head_channels == -1:
+            self.num_heads = num_heads
+        else:
+            assert (
+                channels % num_head_channels == 0
+            ), (f"q,k,v channels {channels} is not divisible by"
+                f"num_head_channels {num_head_channels}")
+
+            self.num_heads = channels // num_head_channels
+        self.norm = nn.GroupNorm(groups, channels)
+        self.qkv = nn.Conv1d(channels, channels * 3, 1)
+        self.attention = QKVAttention(self.num_heads)
+
+        self.proj_out = nn.Conv1d(channels, channels, 1)
 
     def forward(self, x):
-        b, c, h, w = x.shape
-        qkv = self.to_qkv(x).chunk(3, dim=1)
-        q, k, v = map(
-            lambda t: einops.rearrange(
-                t, "b (h c) x y -> b h c (x y)", h=self.heads),
-            qkv
-        )
-        q = q * self.scale
-
-        sim = torch.einsum("b h d i, b h d j -> b h i j", q, k)
-        sim = sim - sim.amax(dim=-1, keepdim=True).detach()
-        attn = sim.softmax(dim=-1)
-
-        out = torch.einsum("b h i j, b h d j -> b h i d", attn, v)
-        out = einops.rearrange(out, "b h (x y) d -> b (h d) x y", x=h, y=w)
-        return self.to_out(out)
-
-
-class LinearAttention(nn.Module):
-    def __init__(self, dim, heads=4, dim_head=32):
-        super().__init__()
-        self.scale = dim_head**-0.5
-        self.heads = heads
-        hidden_dim = dim_head * heads
-        self.to_qkv = nn.Conv2d(dim, hidden_dim * 3, 1, bias=False)
-
-        self.to_out = nn.Sequential(nn.Conv2d(hidden_dim, dim, 1),
-                                    nn.GroupNorm(1, dim))
-
-    def forward(self, x):
-        b, c, h, w = x.shape
-        qkv = self.to_qkv(x).chunk(3, dim=1)
-        q, k, v = map(
-            lambda t: einops.rearrange(
-                t, "b (h c) x y -> b h c (x y)", h=self.heads),
-            qkv
-        )
-
-        q = q.softmax(dim=-2)
-        k = k.softmax(dim=-1)
-
-        q = q * self.scale
-        context = torch.einsum("b h d n, b h e n -> b h d e", k, v)
-
-        out = torch.einsum("b h d e, b h d n -> b h e n", context, q)
-        out = einops.rearrange(
-            out, "b h c (x y) -> b (h c) x y", h=self.heads, x=h, y=w)
-        return self.to_out(out)
+        b, c, *spatial = x.shape
+        x = x.reshape(b, c, -1)
+        qkv = self.qkv(self.norm(x))
+        h = self.attention(qkv)
+        h = self.proj_out(h)
+        return (x + h).reshape(b, c, *spatial)
 
 
 class Residual(nn.Module):
@@ -319,3 +339,11 @@ class SinusoidalPosEmb(nn.Module):
         emb = x[:, None] * emb[None, :]
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
+
+
+x = torch.empty((4, 3, 64, 64))
+
+model = Unet(128, torch.device("cpu"), dim_mults=[1, 1, 2, 2, 4, 4])
+
+t = torch.full((4, ), 42)
+model(x, t)
