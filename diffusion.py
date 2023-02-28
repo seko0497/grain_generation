@@ -7,11 +7,9 @@ from tqdm import tqdm
 class Diffusion:
 
     def __init__(self, betas, timesteps, img_size, in_channels, device,
-                 predict_mask=None, use_wandb=False):
+                 use_wandb=False):
 
         self.use_wandb = use_wandb
-
-        self.predict_mask = predict_mask
 
         self.timesteps = timesteps
         self.image_size = img_size
@@ -69,7 +67,8 @@ class Diffusion:
         return (sqrt_alphas_cumprod_t * x_0 +
                 sqrt_one_minus_alphas_cumprod_t * noise), noise
 
-    def sample(self, model, n, epoch, sampling_steps=None):
+    def sample(self, model, n, mask=None, sampling_steps=None,
+               guidance_scale=0.2):
 
         model.eval()
         with torch.no_grad():
@@ -106,7 +105,20 @@ class Diffusion:
 
                 prediction = model(
                     x.to(self.device),
-                    torch.full((n,), timesteps[t]).to(self.device))
+                    torch.full((n,), timesteps[t]).to(self.device),
+                    mask=mask)
+
+                if mask is not None:
+
+                    zeros = torch.zeros_like(mask).to(self.device)
+                    output_zero = model(x.to(self.device),
+                                        torch.full(
+                                            (n,),
+                                            timesteps[t]).to(self.device),
+                                        zeros)
+
+                    prediction[:, :3] = output_zero[:, :3] + guidance_scale * (
+                        prediction[:, :3] - output_zero[:, :3])
 
                 if prediction.shape[1] == self.in_channels * 2:
 

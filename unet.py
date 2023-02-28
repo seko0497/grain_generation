@@ -9,7 +9,8 @@ class Unet(nn.Module):
 
     def __init__(self, dim, device, dim_mults=(1, 2, 4, 8), in_channels=3,
                  out_channels=3, resnet_block_groups=32, num_resnet_blocks=2,
-                 attention_dims=(32, 16, 8), dropout=0.0):
+                 attention_dims=(32, 16, 8), dropout=0.0, spade=False,
+                 num_classes=None):
 
         super().__init__()
 
@@ -51,11 +52,11 @@ class Unet(nn.Module):
 
         self.head1 = ResnetBlock(
             dims[-1], dims[-1], time_emb_dim, resnet_block_groups,
-            dropout=dropout)
+            dropout=dropout, spade=spade, num_classes=num_classes)
         self.head_attention = Residual(PreNorm(dims[-1], Attention(dims[-1])))
         self.head2 = ResnetBlock(
             dims[-1], dims[-1], time_emb_dim, resnet_block_groups,
-            dropout=dropout)
+            dropout=dropout, spade=spade, num_classes=num_classes)
 
         for i, (dim_in, dim_out) in enumerate(reversed(in_out)):
 
@@ -69,7 +70,8 @@ class Unet(nn.Module):
                     dim_out + dim_in, dim_out,
                     time_emb_dim,
                     resnet_block_groups,
-                    dropout=dropout
+                    dropout=dropout,
+                    spade=spade, num_classes=num_classes
                 )for _ in range(num_resnet_blocks)]),
                 Residual(PreNorm(dim_out, Attention(dim_out))),
                 Upsample(dim_out, dim_in) if not is_last
@@ -77,10 +79,11 @@ class Unet(nn.Module):
             ]))
 
         self.final_block = ResnetBlock(
-            dim * 2, dim, time_emb_dim, resnet_block_groups, dropout=dropout)
+            dim * 2, dim, time_emb_dim, resnet_block_groups, dropout=dropout,
+            spade=spade, num_classes=num_classes)
         self.final_conv = nn.Conv2d(dim, out_channels, 1)
 
-    def forward(self, x, t):
+    def forward(self, x, t, mask=None):
 
         x = self.init_conv(x)
         residual = x.clone()
@@ -105,18 +108,18 @@ class Unet(nn.Module):
             x = downsample(x)
             ds *= 2
 
-        x = self.head1(x, t)
+        x = self.head1(x, t, mask=mask)
         x = self.head_attention(x)
-        x = self.head2(x, t)
+        x = self.head2(x, t, mask=mask)
 
         for blocks, attention, upsample in self.ups:
 
             for block in blocks[:-1]:
                 x = torch.cat((x, h.pop()), dim=1)
-                x = block(x, t)
+                x = block(x, t, mask=mask)
 
             x = torch.cat((x, h.pop()), dim=1)
-            x = blocks[-1](x, t)
+            x = blocks[-1](x, t, mask=mask)
             if ds in self.attention_dims:
                 x = attention(x)
 
@@ -125,48 +128,61 @@ class Unet(nn.Module):
 
         x = torch.cat((x, residual), dim=1)
 
-        x = self.final_block(x, t)
+        x = self.final_block(x, t, mask=mask)
         return self.final_conv(x)
 
 
-class WeightStandardizedCOnv2d(nn.Conv2d):
+class SPADE(nn.Module):
 
-    """siehe https://arxiv.org/abs/1903.10520"""
+    def __init__(self, in_channels, num_classes, groups=8):
 
-    def forward(self, x):
+        super().__init__()
 
-        eps = 1e-5 if x.dtype == torch.float32 else 1e-3
-        mean = einops.reduce(
-            self.weight,
-            "o ... -> o 1 1 1", "mean"
+        self.group_norm = nn.GroupNorm(groups, in_channels, affine=False)
+        hiddem_dim = 128
+        self.mlp_shared = nn.Sequential(
+            nn.Conv2d(num_classes, hiddem_dim, 3, padding=1),
+            nn.ReLU()
         )
-        var = einops.reduce(
-            self.weight,
-            "o ... -> o 1 1 1", partial(torch.var, unbiased=False)
-        )
+        self.mlp_gamma = nn.Conv2d(hiddem_dim, in_channels, 3, padding=1)
+        self.mlp_beta = nn.Conv2d(hiddem_dim, in_channels, 3, padding=1)
 
-        normalized_weight = (self.weight - mean) * (var + eps).rsqrt()
+    def forward(self, x, mask):
 
-        return torch.nn.functional.conv2d(
-            x, normalized_weight, self.bias, self.stride, self.padding,
-            self.dilation, self.groups
-        )
+        x = self.group_norm(x)
+
+        mask = nn.functional.interpolate(
+            mask, size=x.shape[2:], mode="nearest")
+        mask = self.mlp_shared(mask)
+        gamma = self.mlp_gamma(mask)
+        beta = self.mlp_beta(mask)
+
+        return x * (1 + gamma) + beta
 
 
 class Block(nn.Module):
 
-    def __init__(self, in_channels, out_channels, groups=8, dropout=None):
+    def __init__(self, in_channels, out_channels, groups=8, dropout=None,
+                 spade=False, num_classes=None):
         super().__init__()
 
-        self.group_norm = nn.GroupNorm(groups, in_channels)
+        if spade:
+            self.spade = SPADE(in_channels, num_classes, groups)
+        else:
+            self.group_norm = nn.GroupNorm(groups, in_channels)
         self.silu = nn.SiLU()
         self.dropout = nn.Dropout(dropout) if dropout else None
 
         self.conv = nn.Conv2d(in_channels, out_channels, 3, padding=1)
 
-    def forward(self, x, scale_shift=None):
+    def forward(self, x, scale_shift=None, mask=None):
 
-        x = self.group_norm(x)
+        if mask is not None:
+            assert hasattr(self, "spade"), ("if mask is given, "
+                                            "model must have SPADE")
+            x = self.spade(x, mask)
+        else:
+            x = self.group_norm(x)
 
         if scale_shift:
             x = x * (scale_shift[0] + 1)
@@ -194,7 +210,7 @@ class PreNorm(nn.Module):
 class ResnetBlock(nn.Module):
 
     def __init__(self, in_channels, out_channels, time_emb_dim, groups=8,
-                 dropout=0.0):
+                 dropout=0.0, spade=False, num_classes=None):
 
         super().__init__()
 
@@ -206,19 +222,22 @@ class ResnetBlock(nn.Module):
 
         self.dropout = dropout
 
-        self.block1 = Block(in_channels, out_channels, groups=groups)
+        self.block1 = Block(in_channels, out_channels, groups=groups,
+                            spade=spade, num_classes=num_classes)
         self.block2 = Block(out_channels, out_channels, groups=groups,
-                            dropout=dropout)
+                            dropout=dropout, spade=spade,
+                            num_classes=num_classes)
         self.res_conv = nn.Conv2d(in_channels, out_channels, 1)
 
-    def forward(self, x, time_emb):
+    def forward(self, x, time_emb, mask=None):
 
         time_emb = self.mlp(time_emb)
         time_emb = einops.rearrange(time_emb, "b c -> b c 1 1")
         scale_shift = time_emb.chunk(2, dim=1)
 
-        h = self.block1(x)
-        h = self.block2(h, scale_shift)
+        h = self.block1(x, mask=mask)
+        h = self.block2(h, scale_shift, mask=mask)
+
         return h + self.res_conv(x)
 
 
@@ -341,9 +360,12 @@ class SinusoidalPosEmb(nn.Module):
         return emb
 
 
-x = torch.empty((4, 3, 64, 64))
+# x = torch.empty((4, 3, 64, 64))
 
-model = Unet(128, torch.device("cpu"), dim_mults=[1, 1, 2, 2, 4, 4])
+# model = Unet(128, torch.device("cpu"), dim_mults=[1, 1, 2, 2, 4, 4],
+#              cond=True, num_classes=3)
 
-t = torch.full((4, ), 42)
-model(x, t)
+# map = torch.zeros((4, 3, 64, 64))
+
+# t = torch.full((4, ), 42)
+# model(x, t)

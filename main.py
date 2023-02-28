@@ -40,7 +40,7 @@ def main():
         f"{config.get('train_dataset')}/train",
         raw_img_size=config.get('raw_img_size'),
         img_size=config.get('img_size'),
-        mask=True if config.get("pred_mask") is not None else False
+        mask_one_hot=config.get("mask_one_hot")
     ), batch_size=config.get("batch_size"),
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
@@ -51,20 +51,30 @@ def main():
         f"{config.get('train_dataset')}/valid",
         raw_img_size=config.get('raw_img_size'),
         img_size=config.get('img_size'),
-        mask=True if config.get("pred_mask") is not None else False
+        mask_one_hot=config.get("mask_one_hot")
     ), batch_size=config.get("batch_size"),
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
         pin_memory=True,
         shuffle=True)
 
-    validation = Validation(
-        config.get('train_dataset'),
-        config.get("raw_img_size"),
-        config.get("img_size"),
-        num_workers=config.get("num_workers"))
+    validation = Validation(config.get("img_channels"))
+    validation.fit_real_samples(train_loader)
+    validation.fit_real_samples(valid_loader)
 
-    in_channels = 3 if config.get("pred_mask") is None else 4
+    if config.get("pred_type") == "all":
+        if config.get("mask_one_hot"):
+            in_channels = (config.get("img_channels") +
+                           config.get("num_classes"))
+        else:
+            in_channels = config.get("img_channels") + 1
+    elif config.get("pred_type") == "mask":
+        if config.get("mask_one_hot"):
+            in_channels = config.get("num_classes")
+        else:
+            in_channels = 1
+    else:
+        in_channels = config.get("img_channels")
     out_channels = (in_channels * 2 if config.get("loss") == "hybrid"
                     else in_channels)
 
@@ -79,7 +89,9 @@ def main():
                  out_channels=out_channels,
                  dim_mults=config.get("dim_mults"),
                  num_resnet_blocks=config.get("num_resnet_blocks"),
-                 dropout=config.get("dropout"))
+                 dropout=config.get("dropout"),
+                 spade=config.get("condition") == "mask",
+                 num_classes=config.get("num_classes"))
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.parallel.DataParallel(model)
@@ -103,7 +115,6 @@ def main():
         config.get("img_size"),
         in_channels,
         device,
-        predict_mask=config.get("pred_mask"),
         use_wandb=config.get("use_wandb"))
 
     optimizer = getattr(torch.optim, config.get("optimizer"))(
@@ -131,7 +142,6 @@ def main():
 
         if checkpoint:
             epoch += checkpoint["epoch"]
-
         epoch_loss = train(model,
                            diffusion,
                            config.get("timesteps"),
@@ -140,8 +150,9 @@ def main():
                            optimizer,
                            epoch,
                            loss,
-                           config.get("use_wandb"),
-                           ema)
+                           ema,
+                           img_channels=config.get("img_channels"),
+                           pred_type=config.get("pred_type"))
 
         if (epoch % config.get("evaluate_every") == 0 and
                 epoch >= config.get("start_eval_epoch")):
@@ -153,15 +164,20 @@ def main():
 
             eval_model.eval()
 
-            samples = []
+            samples, sample_masks = validation.generate_samples(
+                config.get("condition"),
+                config.get("pred_type"),
+                config.get("img_channels"),
+                config.get("num_classes"),
+                diffusion,
+                config.get("sampling_steps"),
+                config.get("batch_size"),
+                eval_model,
+                device,
+                valid_loader
+            )
 
-            for _ in range(128 // config.get("batch_size")):
-                samples.append(diffusion.sample(
-                    eval_model, config.get("batch_size"), epoch,
-                    sampling_steps=config.get("sampling_steps")))
-
-            samples = torch.cat(samples)
-            current_fid = validation.valid_fid(samples[:, :3])
+            current_fid = validation.valid_fid(samples)
             eval_model.train()
 
             if current_fid <= best["fid"]:
@@ -176,26 +192,36 @@ def main():
                     'loss': loss}, f"wear_generation/best.pth")
 
                 if config.get("use_wandb"):
-                    wandb.save("wear_generation/best.pth")
+                    # wandb.save("wear_generation/best.pth")
 
-                    sample = samples[0].cpu().detach().numpy()
-                    sample_image = np.moveaxis(sample[:3], 0, -1)
+                    if config.get("condition") != "mask":
+                        num_samples_log = 1
+                    else:
+                        num_samples_log = samples.shape[0]
 
-                    sample_mask = sample[-1]
-                    cmap = cm.get_cmap("viridis")
-                    sample_mask = cmap(sample_mask)[:, :, :3]
+                    for i in range(num_samples_log):
 
-                    sample = np.vstack((sample_image, sample_mask))
-                    wandb.log({"Sample": wandb.Image(sample)},
-                              step=epoch, commit=False)
+                        sample_image = samples[i].cpu().detach().numpy()
+                        sample_image = np.moveaxis(sample_image, 0, -1)
 
-            wandb.log({"FID": current_fid,
-                       "best_epoch": best["epoch"],
-                       "best_fid": best["fid"]},
-                      step=epoch, commit=False)
+                        sample_mask = sample_masks[i].cpu().detach().numpy()
+                        cmap = cm.get_cmap("viridis")
+                        sample_mask = cmap(sample_mask)[:, :, :3]
+
+                        sample = np.vstack((sample_image, sample_mask))
+                        wandb.log({f"Sample_{i}": wandb.Image(sample)},
+                                  step=epoch, commit=False)
+
+            if config.get("use_wandb"):
+                wandb.log({"FID": current_fid,
+                           "best_epoch": best["epoch"],
+                           "best_fid": best["fid"]},
+                          step=epoch, commit=False)
 
         valid_loss = validation.valid_hybrid_loss(
-                model, valid_loader, device, diffusion, config.get("timesteps")
+                model, valid_loader, device, diffusion,
+                config.get("timesteps"), config.get("pred_type"),
+                config.get("img_channels")
             )
 
         if config.get("use_wandb"):

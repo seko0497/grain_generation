@@ -9,10 +9,10 @@ import os
 
 class WearDataset(Dataset):
 
-    def __init__(self, root_dir, raw_img_size, img_size, mask=False):
+    def __init__(self, root_dir, raw_img_size, img_size, mask_one_hot=False):
 
         self.root_dir = root_dir
-        self.mask = mask
+        self.one_hot = mask_one_hot
 
         self.files = [
             os.path.splitext(
@@ -36,7 +36,7 @@ class WearDataset(Dataset):
             transforms.CenterCrop(raw_img_size[0]),
             transforms.Resize(
                 img_size, interpolation=transforms.InterpolationMode.NEAREST),
-            transforms.Lambda(lambda x: x * 2 - 1)
+            transforms.Lambda(lambda x: x * 2 - 1 if not mask_one_hot else x)
         ])
 
     def __len__(self):
@@ -48,28 +48,27 @@ class WearDataset(Dataset):
         inp = Image.open(f"{self.inputs[index]}")
         inp = self.transforms(inp)
 
-        if self.mask:
+        trg = np.load(self.targets[index])
 
-            trg = np.load(self.targets[index])
-            trg = torch.Tensor(trg / 2.0)
-
-            trg = trg[None]
-
-            trg = self.target_transforms(trg)
-
-            return {"I": torch.cat((inp, trg))}
-
+        if self.one_hot:
+            trg = torch.nn.functional.one_hot(torch.Tensor(trg).long(),
+                                              num_classes=3)
+            trg = torch.moveaxis(trg, -1, 0)
         else:
-            return {"I": inp}
+            trg = torch.Tensor(trg / 2.0)
+            trg = trg[None]
+        trg = self.target_transforms(trg)
+
+        return {"I": torch.cat((inp, trg))}
 
 
 # DEBUG
 # wear_dataset = WearDataset(
-#     "data/RT100U_processed/train", (448, 576), (128, 128))
+#     "data/RT100U_processed/train", (448, 576), (256, 256), trg_one_hot=False)
 # wear_dataloader = DataLoader(wear_dataset, batch_size=4)
 # for batch in wear_dataloader:
-#     # pass
-#     image = torch.moveaxis(batch["O"][0], 0, -1).numpy()
+#     image = torch.moveaxis(batch["I"][0, :3], 0, -1).numpy()
+#     trg = torch.moveaxis(batch["I"][0, 3:], 0, -1).numpy()
 #     image = (image + 1) / 2
-#     plt.imshow(image)
+#     plt.imshow(trg)
 #     plt.show()

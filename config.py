@@ -3,9 +3,10 @@
 train_dataset = "data/RT100U_processed"
 
 raw_img_size = (448, 576)
-img_size = (256, 256)
+img_size = (64, 64)
+img_channels = 3
 
-local = False
+local = True
 use_wandb = True
 
 checkpoint = None
@@ -16,15 +17,20 @@ beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
 schedule = "linear"
-model_dim = 128
+model_dim = 64
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 dropout = 0.1
 
+mask_one_hot = True
+pred_type = "image"  # "all, mask or image"
+condition = "mask"  # "None, label_dist or mask"
+num_classes = 3
+
 
 # Train config
 
-batch_size = 4
+batch_size = 2
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
@@ -32,28 +38,28 @@ epochs = 3000
 ema = False
 num_workers = 12
 loss = "hybrid"
-pred_mask = "naive"
+
 
 # Eval config
 
-evaluate_every = 100
-start_eval_epoch = 300
+evaluate_every = 1
+start_eval_epoch = 0
 sampling_steps = 100
 
 random_seed = 1234
 
 if local:
     num_workers = 0
-    batch_size = 4
+    batch_size = 1
 
 config = {
     "train_dataset": train_dataset,
     "raw_img_size": raw_img_size,
     "img_size": img_size,
+    "img_channels": img_channels,
     "batch_size": batch_size,
     "optimizer": optimizer,
     "loss": loss,
-    "pred_mask": pred_mask,
     "random_seed": random_seed,
     "epochs": epochs,
     "ema": ema,
@@ -71,5 +77,9 @@ config = {
     "model_dim": model_dim,
     "dim_mults": dim_mults,
     "num_resnet_blocks": num_resnet_blocks,
-    "dropout": dropout
+    "dropout": dropout,
+    "mask_one_hot": mask_one_hot,
+    "pred_type": pred_type,
+    "condition": condition,
+    "num_classes": num_classes,
 }
