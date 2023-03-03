@@ -47,6 +47,7 @@ def main():
         pin_memory=True,
         shuffle=True)
 
+    valid_drop_last = True if 9 % config.get("batch_size") == 1 else False
     valid_loader = DataLoader(WearDataset(
         f"{config.get('train_dataset')}/valid",
         raw_img_size=config.get('raw_img_size'),
@@ -56,11 +57,19 @@ def main():
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
         pin_memory=True,
-        shuffle=True)
+        shuffle=True,
+        drop_last=valid_drop_last)
 
     validation = Validation(config.get("img_channels"))
-    validation.fit_real_samples(train_loader)
-    validation.fit_real_samples(valid_loader)
+    if config.get("pred_type") != "mask":
+        validation.fit_real_samples(train_loader)
+        validation.fit_real_samples(valid_loader)
+
+    mask_validation = None
+    if config.get("pred_type") == "all" or config.get("pred_type") == "mask":
+        mask_validation = Validation(config.get("img_channels"))
+        mask_validation.fit_real_samples(train_loader, fit_masks=True)
+        mask_validation.fit_real_samples(valid_loader, fit_masks=True)
 
     if config.get("pred_type") == "all":
         if config.get("mask_one_hot"):
@@ -134,14 +143,15 @@ def main():
     if config.get("use_wandb"):
         wandb.watch(model, log="all")
 
-    best = {"epoch": 0, "fid": torch.inf}
+    best = {"epoch": 0, "fid_image": torch.inf, "fid_mask": torch.inf}
+    start_epoch = 1
     if checkpoint:
         best["epoch"] = checkpoint["epoch"]
+        start_epoch = checkpoint["epoch"] + 1
+    del checkpoint
 
-    for epoch in range(1, config.get("epochs") + 1):
+    for epoch in range(start_epoch, config.get("epochs") + 1):
 
-        if checkpoint:
-            epoch += checkpoint["epoch"]
         epoch_loss = train(model,
                            diffusion,
                            config.get("timesteps"),
@@ -174,25 +184,37 @@ def main():
                 config.get("batch_size"),
                 eval_model,
                 device,
-                valid_loader
-            )
+                valid_loader)
 
-            current_fid = validation.valid_fid(samples)
+            current_mask_fid = None
+            current_image_fid = None
+            if config.get("pred_type") != "mask":
+                current_image_fid = validation.valid_fid(samples)
+                best_metric = "fid_image"
+            else:
+                best_metric = "fid_mask"
+            if mask_validation is not None:
+                current_mask_fid = mask_validation.valid_fid(
+                    sample_masks.cpu().detach(), masks=True)
             eval_model.train()
 
-            if current_fid <= best["fid"]:
+            current_fid = (current_image_fid if best_metric != "fid_mask" else
+                           current_mask_fid)
+
+            if current_fid <= best[best_metric]:
                 best["epoch"] = epoch
-                best["fid"] = current_fid
+                best[best_metric] = current_fid
 
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': eval_model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'FID': current_fid,
+                    'image_fid': current_image_fid,
+                    'mask_fid': current_mask_fid,
                     'loss': loss}, f"wear_generation/best.pth")
 
                 if config.get("use_wandb"):
-                    # wandb.save("wear_generation/best.pth")
+                    wandb.save("wear_generation/best.pth")
 
                     if config.get("condition") != "mask":
                         num_samples_log = 1
@@ -201,22 +223,36 @@ def main():
 
                     for i in range(num_samples_log):
 
-                        sample_image = samples[i].cpu().detach().numpy()
-                        sample_image = np.moveaxis(sample_image, 0, -1)
+                        if samples != []:
 
-                        sample_mask = sample_masks[i].cpu().detach().numpy()
-                        cmap = cm.get_cmap("viridis")
-                        sample_mask = cmap(sample_mask)[:, :, :3]
+                            sample_image = samples[i].cpu().detach().numpy()
+                            sample_image = np.moveaxis(sample_image, 0, -1)
 
-                        sample = np.vstack((sample_image, sample_mask))
+                        if sample_masks != []:
+
+                            sample_mask = sample_masks[i]
+                            sample_mask = sample_mask.cpu().detach().numpy()
+                            cmap = cm.get_cmap("viridis")
+                            sample_mask = cmap(sample_mask)[:, :, :3]
+
+                        if samples != [] and sample_masks != []:
+                            sample = np.vstack((sample_image, sample_mask))
+                        elif samples != []:
+                            sample = sample_image
+                        else:
+                            sample = sample_mask
                         wandb.log({f"Sample_{i}": wandb.Image(sample)},
                                   step=epoch, commit=False)
 
             if config.get("use_wandb"):
-                wandb.log({"FID": current_fid,
+                fid_log = {"fid_image": current_image_fid,
+                           "fid_mask": current_mask_fid,
                            "best_epoch": best["epoch"],
-                           "best_fid": best["fid"]},
-                          step=epoch, commit=False)
+                           "best_fid": best[best_metric]}
+                if (current_image_fid is not None
+                        and current_mask_fid is not None):
+                    fid_log["fid_sum"] = current_image_fid + current_mask_fid
+                wandb.log(fid_log, step=epoch, commit=False)
 
         valid_loss = validation.valid_hybrid_loss(
                 model, valid_loader, device, diffusion,

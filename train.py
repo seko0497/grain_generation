@@ -20,6 +20,9 @@ def train(
             x_0 = batch["I"].to(device)
         elif pred_type == "mask":
             x_0 = batch["I"][:, img_channels:].to(device)
+            if x_0.shape[1] != 1:  # one hot encoding
+                x_0 = x_0 * 2 - 1
+
         else:
             x_0 = batch["I"][:, :img_channels].to(device)
             mask = batch["I"][:, img_channels:].to(device)
@@ -54,7 +57,8 @@ def train(
 
             out_mean, out_var = diffusion.p(
                 output[:, :x_0.shape[1]], output[:, x_0.shape[1]:],
-                noisy_image, t, learned_var=True)
+                noisy_image, t, learned_var=True, pred_type=pred_type,
+                img_channels=img_channels)
 
             loss = loss_fn(
                 noise, output[:, :x_0.shape[1]], x_0, t.to(device), true_mean,

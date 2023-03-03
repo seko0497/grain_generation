@@ -3,10 +3,10 @@
 train_dataset = "data/RT100U_processed"
 
 raw_img_size = (448, 576)
-img_size = (64, 64)
+img_size = (256, 256)
 img_channels = 3
 
-local = True
+local = False
 use_wandb = True
 
 checkpoint = None
@@ -17,7 +17,7 @@ beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
 schedule = "linear"
-model_dim = 64
+model_dim = 128
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 dropout = 0.1
@@ -30,20 +30,20 @@ num_classes = 3
 
 # Train config
 
-batch_size = 2
+batch_size = 4
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
-epochs = 3000
+epochs = 1000
 ema = False
-num_workers = 12
+num_workers = 32
 loss = "hybrid"
 
 
 # Eval config
 
-evaluate_every = 1
-start_eval_epoch = 0
+evaluate_every = 50
+start_eval_epoch = 300
 sampling_steps = 100
 
 random_seed = 1234

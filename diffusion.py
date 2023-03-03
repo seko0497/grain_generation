@@ -68,17 +68,14 @@ class Diffusion:
                 sqrt_one_minus_alphas_cumprod_t * noise), noise
 
     def sample(self, model, n, mask=None, sampling_steps=None,
-               guidance_scale=0.2):
+               guidance_scale=0.2, pred_type="all", img_channels=3):
 
         model.eval()
         with torch.no_grad():
 
-            samples = torch.Tensor().to(self.device)
-
             x = torch.randn(
                 (n, self.in_channels, self.image_size[0], self.image_size[1]))
             x = x.to(self.device)
-            samples = torch.cat((samples, x[0]), dim=2)
 
             if sampling_steps is None:
                 timesteps = range(self.timesteps)
@@ -128,7 +125,8 @@ class Diffusion:
                     model_mean, model_var = self.p(
                         model_mean, model_var, x,
                         torch.full((n,), t),
-                        learned_var=True)
+                        learned_var=True,
+                        pred_type=pred_type, img_channels=img_channels)
 
                 else:
 
@@ -138,7 +136,8 @@ class Diffusion:
                         prediction, posterior_variance_t)
 
                     model_mean, model_var = self.p(
-                        model_mean, model_var, x, torch.full((n,), t))
+                        model_mean, model_var, x, torch.full((n,), t),
+                        pred_type=pred_type, img_channels=img_channels)
 
                 if t == 0:
 
@@ -190,7 +189,8 @@ class Diffusion:
 
         return self.mean(x_t, x_0, t), posterior_log_variance_clipped_t
 
-    def p(self, model_mean, model_var, x_t, t, learned_var=False):
+    def p(self, model_mean, model_var, x_t, t, learned_var=False,
+          pred_type="all", img_channels=3):
 
         if learned_var:
             # Equation 15 improved ddpm
@@ -214,11 +214,26 @@ class Diffusion:
                     - sqrt_recipm1_alphas_cumprod_t * model_mean)
         pred_x_0 = pred_x_0.clamp(-1, 1)
 
-        if pred_x_0.shape[1] == 4:
+        if pred_type == "all" or pred_type == "mask":
+            if pred_type == "all":
+                mask_pred = pred_x_0[:, img_channels:]
+            else:
+                mask_pred = pred_x_0
 
-            pred_x_0[:, -1] += 1
-            pred_x_0[:, -1] = torch.round(pred_x_0[:, -1])
-            pred_x_0[:, -1] -= 1
+            if mask_pred.shape[1] == 1:
+                mask_pred += 1
+                mask_pred = torch.round(mask_pred)
+                mask_pred -= 1
+
+            else:  # one hot encoding
+                mask_pred = (mask_pred + 1) / 2
+                mask_pred = torch.round(mask_pred)
+                mask_pred = mask_pred * 2 - 1
+
+            if pred_type == "all":
+                pred_x_0[:, img_channels:] = mask_pred
+            else:
+                pred_x_0 = mask_pred
 
         # get q_posterior mean of predicted x_0
         model_mean, __ = self.q_posterior(x_t, pred_x_0, t)
