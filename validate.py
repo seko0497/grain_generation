@@ -1,3 +1,4 @@
+from matplotlib import cm
 import numpy as np
 import torch
 from torchmetrics.image.fid import FrechetInceptionDistance
@@ -18,10 +19,29 @@ class Validation():
             normalize=True, reset_real_features=False)
         self.img_channels = img_channels
 
-    def fit_real_samples(self, dataloader):
+    def fit_real_samples(self, dataloader, fit_masks=False):
 
         for batch in dataloader:
-            real_samples = (batch["I"][:, :self.img_channels] + 1) / 2
+            if fit_masks:
+                masks = batch["I"][:, self.img_channels:]
+                if masks.shape[1] != 1:
+                    masks_argmax = torch.argmax(
+                            masks, dim=1, keepdim=True).float()
+                    masks = masks_argmax / (masks.shape[1] - 1)
+                else:
+                    masks = (masks + 1) / 2
+                masks = masks[:, 0]
+                cmap = cm.get_cmap("viridis")
+                cm_masks = []
+                for mask in masks:
+                    cm_mask = cmap(np.array(mask))[:, :, :3]
+                    cm_masks.append(
+                        torch.moveaxis(torch.Tensor(cm_mask), -1, 0))
+                real_samples = torch.stack(cm_masks)
+
+            else:
+                real_samples = (batch["I"][:, :self.img_channels] + 1) / 2
+
             self.fid.update(real_samples, real=True)
 
     def valid_hybrid_loss(
@@ -29,57 +49,68 @@ class Validation():
             pred_type="all", img_channels=3, guidance_scale=0.2):
 
         epoch_loss = 0
-        model.eval()
-
         mask = None
 
-        for batch_idx, batch in enumerate(tqdm(data_loader)):
+        with torch.no_grad():
+            model.eval()
 
-            if pred_type == "all":
-                x_0 = batch["I"].to(device)
-            elif pred_type == "mask":
-                x_0 = batch["I"][:, img_channels:].to(device)
-            else:
-                x_0 = batch["I"][:, :img_channels].to(device)
-                mask = batch["I"][:, img_channels:].to(device)
+            for batch_idx, batch in enumerate(tqdm(data_loader)):
 
-            t = torch.randint(
-                0, timesteps, (x_0.shape[0],), dtype=torch.int64)
-            noisy_image, noise = diffusion.forward_process(x_0, t)
+                if pred_type == "all":
+                    x_0 = batch["I"].to(device)
+                elif pred_type == "mask":
+                    x_0 = batch["I"][:, img_channels:].to(device)
+                else:
+                    x_0 = batch["I"][:, :img_channels].to(device)
+                    mask = batch["I"][:, img_channels:].to(device)
 
-            noisy_image = noisy_image.to(device)
-            noise = noise.to(device)
+                t = torch.randint(
+                    0, timesteps, (x_0.shape[0],), dtype=torch.int64)
+                noisy_image, noise = diffusion.forward_process(x_0, t)
 
-            with torch.no_grad():
+                noisy_image = noisy_image.to(device)
+                noise = noise.to(device)
+
                 output = model(noisy_image, t.to(device), mask=mask)
 
-            # classifier free guidance
-            if mask is not None:
-                zeros = torch.zeros_like(mask).to(device)
-                output_zero = model(noisy_image, t.to(device), zeros)
+                # classifier free guidance
+                if mask is not None:
+                    zeros = torch.zeros_like(mask).to(device)
+                    output_zero = model(noisy_image, t.to(device), zeros)
 
-                output[:, :img_channels] = (output_zero[:, :img_channels] +
-                                            guidance_scale * (
-                                                output[:, :img_channels] -
-                                                output_zero[:, :img_channels]))
+                    output[:, :img_channels] = (output_zero[:, :img_channels] +
+                                                guidance_scale * (
+                                                    output[:, :img_channels] -
+                                                    output_zero[
+                                                        :, :img_channels]))
 
-            true_mean, true_log_var_clipped = diffusion.q_posterior(
-                noisy_image, x_0, t)
-            out_mean, out_var = diffusion.p(
-                output[:, :x_0.shape[1]], output[:, x_0.shape[1]:],
-                noisy_image, t, learned_var=True)
+                true_mean, true_log_var_clipped = diffusion.q_posterior(
+                    noisy_image, x_0, t)
+                out_mean, out_var = diffusion.p(
+                    output[:, :x_0.shape[1]], output[:, x_0.shape[1]:],
+                    noisy_image, t, learned_var=True)
 
-            loss_fn = HybridLoss()
-            loss = loss_fn(
-                noise, output[:, :x_0.shape[1]], x_0, t.to(device), true_mean,
-                true_log_var_clipped, out_mean, out_var)
+                loss_fn = HybridLoss()
+                loss = loss_fn(
+                    noise, output[:, :x_0.shape[1]], x_0, t.to(device),
+                    true_mean, true_log_var_clipped, out_mean, out_var)
 
-            epoch_loss += loss.item()
+                epoch_loss += loss.item()
 
         model.train()
         return epoch_loss / len(data_loader)
 
-    def valid_fid(self, samples):
+    def valid_fid(self, samples, masks=False):
+
+        if masks:
+            fid_masks = []
+            cmap = cm.get_cmap("viridis")
+            for mask in samples:
+                mask = cmap(np.array(mask))[:, :, :3]
+                fid_masks.append(torch.moveaxis(torch.Tensor(mask), -1, 0))
+            fid_masks = torch.stack(fid_masks)
+
+            samples = fid_masks
 
         self.fid.reset()
         self.fid.update(samples.cpu(), real=False)
@@ -99,27 +130,34 @@ class Validation():
 
             for batch in valid_loader:
 
-                sample_mask = batch["I"][:, 3:]
+                sample_mask = batch["I"][:, img_channels:]
                 sample_masks.append(sample_mask)
                 sample_batch = diffusion.sample(model,
                                                 sample_mask.shape[0],
                                                 mask=sample_mask.to(
                                                     device),
-                                                sampling_steps=sampling_steps)
+                                                sampling_steps=sampling_steps,
+                                                pred_type=pred_type,
+                                                img_channels=img_channels)
                 samples.append(sample_batch)
             sample_masks = torch.cat(sample_masks)
 
         else:
 
-            for _ in range(2 // batch_size):
+            for _ in range(128 // batch_size):
                 samples.append(diffusion.sample(model, batch_size,
-                                                sampling_steps=sampling_steps))
+                                                sampling_steps=sampling_steps,
+                                                pred_type=pred_type,
+                                                img_channels=img_channels))
         samples = torch.cat(samples)
 
         # split images and masks
         if pred_type == "all":
             sample_masks = samples[:, img_channels:]
             samples = samples[:, :img_channels]
+        elif pred_type == "mask":
+            sample_masks = samples
+            samples = []
 
         # convert masks to have one channel
         if sample_masks.shape[1] == num_classes:
