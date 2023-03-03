@@ -40,7 +40,9 @@ def main():
         f"{config.get('train_dataset')}/train",
         raw_img_size=config.get('raw_img_size'),
         img_size=config.get('img_size'),
-        mask_one_hot=config.get("mask_one_hot")
+        mask_one_hot=config.get("mask_one_hot"),
+        label_dist=True if config.get("condition") == "label_dist" else False,
+        norm=config.get("label_norm")
     ), batch_size=config.get("batch_size"),
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
@@ -52,7 +54,9 @@ def main():
         f"{config.get('train_dataset')}/valid",
         raw_img_size=config.get('raw_img_size'),
         img_size=config.get('img_size'),
-        mask_one_hot=config.get("mask_one_hot")
+        mask_one_hot=config.get("mask_one_hot"),
+        label_dist=True if config.get("condition") == "label_dist" else False,
+        norm=config.get("label_norm")
     ), batch_size=config.get("batch_size"),
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,

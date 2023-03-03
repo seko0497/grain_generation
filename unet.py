@@ -28,6 +28,8 @@ class Unet(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim)
         )
 
+        self.label_dist_embedding = nn.Linear(num_classes, time_emb_dim)
+
         self.attention_dims = attention_dims
 
         self.downs = nn.ModuleList([])
@@ -83,12 +85,14 @@ class Unet(nn.Module):
             spade=spade, num_classes=num_classes)
         self.final_conv = nn.Conv2d(dim, out_channels, 1)
 
-    def forward(self, x, t, mask=None):
+    def forward(self, x, t, mask=None, label_dist=None):
 
         x = self.init_conv(x)
         residual = x.clone()
 
         t = self.time_mlp(t)
+        if label_dist is not None:
+            t = t + self.label_dist_embedding(label_dist)
 
         h = []
         ds = 1

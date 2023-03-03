@@ -22,10 +22,11 @@ def train(
             x_0 = batch["I"][:, img_channels:].to(device)
             if x_0.shape[1] != 1:  # one hot encoding
                 x_0 = x_0 * 2 - 1
-
         else:
             x_0 = batch["I"][:, :img_channels].to(device)
             mask = batch["I"][:, img_channels:].to(device)
+
+        label_dist = batch["L"].to(device)
 
         t = torch.randint(
             0, timesteps, (x_0.shape[0],), dtype=torch.int64)
@@ -36,7 +37,10 @@ def train(
 
         # Forward pass
         optimizer.zero_grad()
-        output = model(noisy_image, t.to(device), mask=mask)
+        output = model(noisy_image, t.to(device), mask=mask,
+                       label_dist=label_dist)
+        print(output.shape)
+        quit()
 
         # classifier free guidance
         if mask is not None:

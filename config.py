@@ -3,11 +3,11 @@
 train_dataset = "data/RT100U_processed"
 
 raw_img_size = (448, 576)
-img_size = (256, 256)
+img_size = (64, 64)
 img_channels = 3
 
-local = False
-use_wandb = True
+local = True
+use_wandb = False
 
 checkpoint = None
 
@@ -17,15 +17,16 @@ beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
 schedule = "linear"
-model_dim = 128
+model_dim = 64
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 dropout = 0.1
 
-mask_one_hot = True
-pred_type = "image"  # "all, mask or image"
-condition = "mask"  # "None, label_dist or mask"
+mask_one_hot = False
+pred_type = "all"  # "all, mask or image"
+condition = "label_dist"  # "None, label_dist or mask"
 num_classes = 3
+label_norm = ([0.97099304, 0., 0.], [0.99629211, 0.0241394, 0.02012634])
 
 
 # Train config
@@ -82,4 +83,5 @@ config = {
     "pred_type": pred_type,
     "condition": condition,
     "num_classes": num_classes,
+    "label_norm": label_norm
 }
