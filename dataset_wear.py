@@ -2,6 +2,7 @@ from collections import Counter
 from matplotlib import pyplot as plt
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.utils.validation import check_is_fitted
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
@@ -12,12 +13,13 @@ import os
 class WearDataset(Dataset):
 
     def __init__(self, root_dir, raw_img_size, img_size, mask_one_hot=False,
-                 num_classes=3, norm=None, label_dist=False):
+                 num_classes=3, label_dist=False):
 
         self.root_dir = root_dir
         self.one_hot = mask_one_hot
         self.num_classes = num_classes
         self.label_dist = label_dist
+        self.label_dist_scaler_fitted = False
 
         self.files = [
             os.path.splitext(
@@ -44,11 +46,16 @@ class WearDataset(Dataset):
                 img_size, interpolation=transforms.InterpolationMode.NEAREST),
         ])
 
-        if norm is not None:
-            self.scaler = MinMaxScaler()
-            self.scaler.fit(np.array(norm))
-        else:
-            self.scaler = None
+        if self.label_dist:
+            self.label_dist_scaler = MinMaxScaler()
+            self.fit_scaler()
+            self.label_dist_scaler_fitted = True
+
+    def fit_scaler(self):
+
+        for i in range(self.__len__()):
+
+            self.label_dist_scaler.partial_fit(self.__getitem__(i)["L"][None])
 
     def __len__(self):
 
@@ -70,11 +77,9 @@ class WearDataset(Dataset):
                 [dict(counter)[cl] for cl in range(self.num_classes)],
                 dtype=float)
             label_dist /= label_dist.sum()
-            if self.scaler is not None:
-                label_dist = self.scaler.transform(
+            if self.label_dist_scaler_fitted:
+                label_dist = self.label_dist_scaler.transform(
                     np.array(label_dist)[None])[0]
-        else:
-            label_dist = None
 
         if self.one_hot:
             trg = torch.nn.functional.one_hot(trg[0].long(),
@@ -84,8 +89,11 @@ class WearDataset(Dataset):
             trg = torch.Tensor(trg / (self.num_classes - 1))
         trg = trg * 2 - 1
 
-        return {"I": torch.cat((inp, trg)).float(),
-                "L": torch.Tensor(label_dist)}
+        if self.label_dist:
+            return {"I": torch.cat((inp, trg)).float(),
+                    "L": torch.Tensor(label_dist)}
+        else:
+            return {"I": torch.cat((inp, trg)).float()}
 
 
 # def calc_min_max():

@@ -67,7 +67,7 @@ class Diffusion:
         return (sqrt_alphas_cumprod_t * x_0 +
                 sqrt_one_minus_alphas_cumprod_t * noise), noise
 
-    def sample(self, model, n, mask=None, sampling_steps=None,
+    def sample(self, model, n, mask=None, label_dist=None, sampling_steps=None,
                guidance_scale=0.2, pred_type="all", img_channels=3):
 
         model.eval()
@@ -103,19 +103,24 @@ class Diffusion:
                 prediction = model(
                     x.to(self.device),
                     torch.full((n,), timesteps[t]).to(self.device),
-                    mask=mask)
+                    mask=mask, label_dist=label_dist)
 
-                if mask is not None:
+                if mask is not None or label_dist is not None:
 
-                    zeros = torch.zeros_like(mask).to(self.device)
+                    if mask is not None:
+                        zeros = torch.zeros_like(mask).to(self.device)
+                    else:
+                        zeros = None
                     output_zero = model(x.to(self.device),
                                         torch.full(
                                             (n,),
                                             timesteps[t]).to(self.device),
                                         zeros)
 
-                    prediction[:, :3] = output_zero[:, :3] + guidance_scale * (
-                        prediction[:, :3] - output_zero[:, :3])
+                    prediction[:, :self.in_channels] = (
+                        output_zero[:, :self.in_channels] + guidance_scale * (
+                            prediction[:, :self.in_channels] -
+                            output_zero[:, :self.in_channels]))
 
                 if prediction.shape[1] == self.in_channels * 2:
 

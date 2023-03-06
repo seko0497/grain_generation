@@ -21,12 +21,13 @@ model_dim = 64
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 dropout = 0.1
+drop_condition_rate = 0.2
+guidance_scale = 1.3
 
 mask_one_hot = False
-pred_type = "all"  # "all, mask or image"
+pred_type = "mask"  # "all, mask or image"
 condition = "label_dist"  # "None, label_dist or mask"
 num_classes = 3
-label_norm = ([0.97099304, 0., 0.], [0.99629211, 0.0241394, 0.02012634])
 
 
 # Train config
@@ -43,15 +44,15 @@ loss = "hybrid"
 
 # Eval config
 
-evaluate_every = 50
-start_eval_epoch = 300
+evaluate_every = 1
+start_eval_epoch = 0
 sampling_steps = 100
 
 random_seed = 1234
 
 if local:
     num_workers = 0
-    batch_size = 1
+    batch_size = 2
 
 config = {
     "train_dataset": train_dataset,
@@ -79,9 +80,10 @@ config = {
     "dim_mults": dim_mults,
     "num_resnet_blocks": num_resnet_blocks,
     "dropout": dropout,
+    "drop_condition_rate": drop_condition_rate,
+    "guidance_scale": guidance_scale,
     "mask_one_hot": mask_one_hot,
     "pred_type": pred_type,
     "condition": condition,
     "num_classes": num_classes,
-    "label_norm": label_norm
 }

@@ -1,3 +1,4 @@
+from collections import Counter
 from matplotlib import cm
 import numpy as np
 import torch
@@ -46,7 +47,7 @@ class Validation():
 
     def valid_hybrid_loss(
             self, model, data_loader, device, diffusion, timesteps,
-            pred_type="all", img_channels=3, guidance_scale=0.2):
+            pred_type="all", img_channels=3, drop_rate=0.2):
 
         epoch_loss = 0
         mask = None
@@ -63,6 +64,17 @@ class Validation():
                 else:
                     x_0 = batch["I"][:, :img_channels].to(device)
                     mask = batch["I"][:, img_channels:].to(device)
+                    drop_mask = (
+                        torch.rand(
+                            (mask.shape[0], 1, 1, 1)) > drop_rate).float()
+                    mask *= drop_mask.to(device)
+
+                if "L" in batch.keys():
+                    label_dist = batch["L"].to(device)
+                    if torch.rand(1) <= drop_rate:
+                        label_dist = None
+                else:
+                    label_dist = None
 
                 t = torch.randint(
                     0, timesteps, (x_0.shape[0],), dtype=torch.int64)
@@ -72,17 +84,6 @@ class Validation():
                 noise = noise.to(device)
 
                 output = model(noisy_image, t.to(device), mask=mask)
-
-                # classifier free guidance
-                if mask is not None:
-                    zeros = torch.zeros_like(mask).to(device)
-                    output_zero = model(noisy_image, t.to(device), zeros)
-
-                    output[:, :img_channels] = (output_zero[:, :img_channels] +
-                                                guidance_scale * (
-                                                    output[:, :img_channels] -
-                                                    output_zero[
-                                                        :, :img_channels]))
 
                 true_mean, true_log_var_clipped = diffusion.q_posterior(
                     noisy_image, x_0, t)
@@ -120,10 +121,11 @@ class Validation():
 
     def generate_samples(self, condition, pred_type, img_channels, num_classes,
                          diffusion, sampling_steps, batch_size, model, device,
-                         valid_loader=None):
+                         valid_loader=None, guidance_scale=0.2):
 
         samples = []
         sample_masks = []
+        label_dists = []
 
         # sample
         if condition == "mask":
@@ -136,19 +138,29 @@ class Validation():
                                                 sample_mask.shape[0],
                                                 mask=sample_mask.to(
                                                     device),
+                                                label_dist=None,
                                                 sampling_steps=sampling_steps,
                                                 pred_type=pred_type,
-                                                img_channels=img_channels)
+                                                img_channels=img_channels,
+                                                guidance_scale=guidance_scale)
                 samples.append(sample_batch)
             sample_masks = torch.cat(sample_masks)
 
         else:
 
-            for _ in range(128 // batch_size):
+            for _ in range(2 // batch_size):
+                if condition == "label_dist":
+                    label_dist = torch.rand(batch_size, num_classes).to(device)
+                    label_dists.append(label_dist)
+                else:
+                    label_dist = None
                 samples.append(diffusion.sample(model, batch_size,
+                                                mask=None,
+                                                label_dist=label_dist,
                                                 sampling_steps=sampling_steps,
                                                 pred_type=pred_type,
-                                                img_channels=img_channels))
+                                                img_channels=img_channels,
+                                                guidance_scale=guidance_scale))
         samples = torch.cat(samples)
 
         # split images and masks
@@ -167,4 +179,24 @@ class Validation():
         else:
             sample_masks = sample_masks[:, 0]
 
-        return samples, sample_masks
+        return samples, sample_masks, torch.cat(label_dists)
+
+    def label_dist_rmse(self, pred_masks, label_dists, scaler):
+
+        num_classes = label_dists.shape[1]
+        pred_label_dists = []
+        for mask in pred_masks:
+
+            counter = Counter({cl: 0 for cl in range(num_classes)})
+            counter.update(np.array(mask.cpu().detach()).flatten())
+            label_dist = np.array(
+                [dict(counter)[cl] for cl in range(num_classes)],
+                dtype=float)
+            label_dist /= label_dist.sum()
+            label_dist = scaler.transform(label_dist[None])[0]
+            pred_label_dists.append(torch.Tensor(label_dist))
+        pred_label_dists = torch.stack(pred_label_dists)
+
+        return torch.sqrt(
+            torch.nn.functional.mse_loss(
+                pred_label_dists.to(label_dists.device), label_dists))

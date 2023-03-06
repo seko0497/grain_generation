@@ -42,7 +42,6 @@ def main():
         img_size=config.get('img_size'),
         mask_one_hot=config.get("mask_one_hot"),
         label_dist=True if config.get("condition") == "label_dist" else False,
-        norm=config.get("label_norm")
     ), batch_size=config.get("batch_size"),
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
@@ -56,7 +55,6 @@ def main():
         img_size=config.get('img_size'),
         mask_one_hot=config.get("mask_one_hot"),
         label_dist=True if config.get("condition") == "label_dist" else False,
-        norm=config.get("label_norm")
     ), batch_size=config.get("batch_size"),
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
@@ -166,7 +164,8 @@ def main():
                            loss,
                            ema,
                            img_channels=config.get("img_channels"),
-                           pred_type=config.get("pred_type"))
+                           pred_type=config.get("pred_type"),
+                           drop_rate=config.get("drop_condition_rate"))
 
         if (epoch % config.get("evaluate_every") == 0 and
                 epoch >= config.get("start_eval_epoch")):
@@ -178,7 +177,7 @@ def main():
 
             eval_model.eval()
 
-            samples, sample_masks = validation.generate_samples(
+            samples, sample_masks, label_dists = validation.generate_samples(
                 config.get("condition"),
                 config.get("pred_type"),
                 config.get("img_channels"),
@@ -188,7 +187,15 @@ def main():
                 config.get("batch_size"),
                 eval_model,
                 device,
-                valid_loader)
+                valid_loader,
+                guidance_scale=config.get("guidance_scale"))
+
+            if config.get("condition") == "label_dist":
+                label_dist_rmse = validation.label_dist_rmse(
+                    sample_masks, label_dists,
+                    train_loader.dataset.label_dist_scaler)
+            else:
+                label_dist_rmse = None
 
             current_mask_fid = None
             current_image_fid = None
@@ -200,6 +207,7 @@ def main():
             if mask_validation is not None:
                 current_mask_fid = mask_validation.valid_fid(
                     sample_masks.cpu().detach(), masks=True)
+
             eval_model.train()
 
             current_fid = (current_image_fid if best_metric != "fid_mask" else
@@ -251,17 +259,20 @@ def main():
             if config.get("use_wandb"):
                 fid_log = {"fid_image": current_image_fid,
                            "fid_mask": current_mask_fid,
+                           "label_dist_rmse": label_dist_rmse,
                            "best_epoch": best["epoch"],
                            "best_fid": best[best_metric]}
                 if (current_image_fid is not None
                         and current_mask_fid is not None):
-                    fid_log["fid_sum"] = current_image_fid + current_mask_fid
+                    fid_log["fid_mean"] = (
+                        (current_image_fid + current_mask_fid) / 2)
                 wandb.log(fid_log, step=epoch, commit=False)
 
         valid_loss = validation.valid_hybrid_loss(
                 model, valid_loader, device, diffusion,
                 config.get("timesteps"), config.get("pred_type"),
-                config.get("img_channels")
+                config.get("img_channels"),
+                drop_rate=config.get("drop_condition_rate")
             )
 
         if config.get("use_wandb"):
