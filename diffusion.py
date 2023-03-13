@@ -226,14 +226,25 @@ class Diffusion:
                 mask_pred = pred_x_0
 
             if mask_pred.shape[1] == 1:
-                mask_pred += 1
-                mask_pred = torch.round(mask_pred)
+
+                mask_pred = (mask_pred + 1) / 2
+                mask_pred *= 3
+                mask_pred[mask_pred == 3] = 3 - 1
+                mask_pred = mask_pred.int()
                 mask_pred -= 1
+                # mask_pred += 1
+                # mask_pred = torch.round(mask_pred)
+                # mask_pred -= 1
+                # pass
 
             else:  # one hot encoding
-                mask_pred = (mask_pred + 1) / 2
-                mask_pred = torch.round(mask_pred)
-                mask_pred = mask_pred * 2 - 1
+
+                # mask_pred = torch.nn.functional.softmax(mask_pred, dim=1)
+                # mask_pred = torch.argmax(mask_pred, dim=1)
+                # mask_pred = torch.nn.functional.one_hot(mask_pred.long())
+                # mask_pred = torch.moveaxis(mask_pred, -1, 1).float()
+                # mask_pred = mask_pred * 2 - 1
+                pass
 
             if pred_type == "all":
                 pred_x_0[:, img_channels:] = mask_pred

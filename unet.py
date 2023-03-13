@@ -28,7 +28,10 @@ class Unet(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim)
         )
 
-        self.label_dist_embedding = nn.Linear(num_classes, time_emb_dim)
+        self.label_dist_embedding = nn.Sequential(
+            nn.Linear(num_classes - 1, time_emb_dim),
+            nn.SiLU(),
+            nn.Linear(time_emb_dim, time_emb_dim))
 
         self.attention_dims = attention_dims
 

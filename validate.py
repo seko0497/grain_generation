@@ -83,13 +83,15 @@ class Validation():
                 noisy_image = noisy_image.to(device)
                 noise = noise.to(device)
 
-                output = model(noisy_image, t.to(device), mask=mask)
+                output = model(noisy_image, t.to(device), mask=mask,
+                               label_dist=label_dist)
 
                 true_mean, true_log_var_clipped = diffusion.q_posterior(
                     noisy_image, x_0, t)
                 out_mean, out_var = diffusion.p(
                     output[:, :x_0.shape[1]], output[:, x_0.shape[1]:],
-                    noisy_image, t, learned_var=True)
+                    noisy_image, t, learned_var=True, pred_type=pred_type,
+                    img_channels=img_channels)
 
                 loss_fn = HybridLoss()
                 loss = loss_fn(
@@ -148,9 +150,10 @@ class Validation():
 
         else:
 
-            for _ in range(2 // batch_size):
+            for _ in range(128 // batch_size):
                 if condition == "label_dist":
-                    label_dist = torch.rand(batch_size, num_classes).to(device)
+                    label_dist = torch.rand(
+                        batch_size, num_classes - 1).to(device)
                     label_dists.append(label_dist)
                 else:
                     label_dist = None
@@ -179,7 +182,10 @@ class Validation():
         else:
             sample_masks = sample_masks[:, 0]
 
-        return samples, sample_masks, torch.cat(label_dists)
+        if label_dists != []:
+            label_dists = torch.cat(label_dists)
+
+        return samples, sample_masks, label_dists
 
     def label_dist_rmse(self, pred_masks, label_dists, scaler):
 

@@ -22,7 +22,7 @@ dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 dropout = 0.1
 drop_condition_rate = 0.2
-guidance_scale = 1.3
+guidance_scale = 2.0
 
 mask_one_hot = False
 pred_type = "mask"  # "all, mask or image"
@@ -38,7 +38,7 @@ loss = "MSELoss"
 learning_rate = 0.00001
 epochs = 1000
 ema = False
-num_workers = 32
+num_workers = 12
 loss = "hybrid"
 
 
@@ -46,7 +46,7 @@ loss = "hybrid"
 
 evaluate_every = 1
 start_eval_epoch = 0
-sampling_steps = 100
+sampling_steps = 200
 
 random_seed = 1234
 

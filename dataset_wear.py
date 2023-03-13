@@ -46,10 +46,10 @@ class WearDataset(Dataset):
                 img_size, interpolation=transforms.InterpolationMode.NEAREST),
         ])
 
-        if self.label_dist:
-            self.label_dist_scaler = MinMaxScaler()
-            self.fit_scaler()
-            self.label_dist_scaler_fitted = True
+        # if self.label_dist:
+        #     self.label_dist_scaler = MinMaxScaler()
+        #     self.fit_scaler()
+        #     self.label_dist_scaler_fitted = True
 
     def fit_scaler(self):
 
@@ -74,12 +74,12 @@ class WearDataset(Dataset):
             counter = Counter({cl: 0 for cl in range(self.num_classes)})
             counter.update(np.array(trg).flatten())
             label_dist = np.array(
-                [dict(counter)[cl] for cl in range(self.num_classes)],
+                [dict(counter)[cl + 1] for cl in range(self.num_classes - 1)],
                 dtype=float)
             label_dist /= label_dist.sum()
-            if self.label_dist_scaler_fitted:
-                label_dist = self.label_dist_scaler.transform(
-                    np.array(label_dist)[None])[0]
+            # if self.label_dist_scaler_fitted:
+            #     label_dist = self.label_dist_scaler.transform(
+            #         np.array(label_dist)[None])[0]
 
         if self.one_hot:
             trg = torch.nn.functional.one_hot(trg[0].long(),
