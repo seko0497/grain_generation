@@ -1,5 +1,5 @@
 from collections import Counter
-from matplotlib import cm
+from matplotlib import cm, pyplot as plt
 import numpy as np
 import torch
 from torchmetrics.image.fid import FrechetInceptionDistance
@@ -20,29 +20,24 @@ class Validation():
             normalize=True, reset_real_features=False)
         self.img_channels = img_channels
 
-    def fit_real_samples(self, dataloader, fit_masks=False):
+    def fit_real_samples(self, dataloader, channel):
 
-        for batch in dataloader:
-            if fit_masks:
-                masks = batch["I"][:, self.img_channels:]
-                if masks.shape[1] != 1:
-                    masks_argmax = torch.argmax(
-                            masks, dim=1, keepdim=True).float()
-                    masks = masks_argmax / (masks.shape[1] - 1)
-                else:
-                    masks = (masks + 1) / 2
-                masks = masks[:, 0]
-                cmap = cm.get_cmap("viridis")
-                cm_masks = []
-                for mask in masks:
-                    cm_mask = cmap(np.array(mask))[:, :, :3]
-                    cm_masks.append(
-                        torch.moveaxis(torch.Tensor(cm_mask), -1, 0))
-                real_samples = torch.stack(cm_masks)
-
+        for batch in tqdm(dataloader):
+            masks = batch["I"][:, channel:channel + 1]
+            if masks.shape[1] != 1:
+                masks_argmax = torch.argmax(
+                        masks, dim=1, keepdim=True).float()
+                masks = masks_argmax / (masks.shape[1] - 1)
             else:
-                real_samples = (batch["I"][:, :self.img_channels] + 1) / 2
-
+                masks = (masks + 1) / 2
+            masks = masks[:, 0]
+            cmap = cm.get_cmap("viridis")
+            cm_masks = []
+            for mask in masks:
+                cm_mask = cmap(np.array(mask))[:, :, :3]
+                cm_masks.append(
+                    torch.moveaxis(torch.Tensor(cm_mask), -1, 0))
+            real_samples = torch.stack(cm_masks)
             self.fid.update(real_samples, real=True)
 
     def valid_hybrid_loss(
@@ -103,17 +98,16 @@ class Validation():
         model.train()
         return epoch_loss / len(data_loader)
 
-    def valid_fid(self, samples, masks=False):
+    def valid_fid(self, samples):
 
-        if masks:
-            fid_masks = []
-            cmap = cm.get_cmap("viridis")
-            for mask in samples:
-                mask = cmap(np.array(mask))[:, :, :3]
-                fid_masks.append(torch.moveaxis(torch.Tensor(mask), -1, 0))
-            fid_masks = torch.stack(fid_masks)
+        fid_masks = []
+        cmap = cm.get_cmap("viridis")
+        for mask in samples:
+            mask = cmap(np.array(mask))[:, :, :3]
+            fid_masks.append(torch.moveaxis(torch.Tensor(mask), -1, 0))
+        fid_masks = torch.stack(fid_masks)
 
-            samples = fid_masks
+        samples = fid_masks
 
         self.fid.reset()
         self.fid.update(samples.cpu(), real=False)
@@ -150,7 +144,7 @@ class Validation():
 
         else:
 
-            for _ in range(128 // batch_size):
+            for _ in range(16 // batch_size):
                 if condition == "label_dist":
                     label_dist = torch.rand(
                         batch_size, num_classes - 1).to(device)
@@ -175,12 +169,13 @@ class Validation():
             samples = []
 
         # convert masks to have one channel
-        if sample_masks.shape[1] == num_classes:
-            sample_masks = torch.argmax(
-                            sample_masks, dim=1).float()
-            sample_masks = sample_masks / (num_classes - 1)
-        else:
-            sample_masks = sample_masks[:, 0]
+        if sample_masks != []:
+            if sample_masks.shape[1] == num_classes:
+                sample_masks = torch.argmax(
+                                sample_masks, dim=1).float()
+                sample_masks = sample_masks / (num_classes - 1)
+            else:
+                sample_masks = sample_masks[:, 0]
 
         if label_dists != []:
             label_dists = torch.cat(label_dists)

@@ -7,13 +7,14 @@ from tqdm import tqdm
 class Diffusion:
 
     def __init__(self, betas, timesteps, img_size, in_channels, device,
-                 use_wandb=False):
+                 use_wandb=False, num_classes=3):
 
         self.use_wandb = use_wandb
 
         self.timesteps = timesteps
         self.image_size = img_size
         self.in_channels = in_channels
+        self.num_classes = num_classes
 
         self.betas = betas
         self.calculate_alphas(self.betas)
@@ -226,12 +227,16 @@ class Diffusion:
                 mask_pred = pred_x_0
 
             if mask_pred.shape[1] == 1:
-
                 mask_pred = (mask_pred + 1) / 2
-                mask_pred *= 3
-                mask_pred[mask_pred == 3] = 3 - 1
-                mask_pred = mask_pred.int()
-                mask_pred -= 1
+                if self.num_classes == 2:
+                    # mask_pred = torch.round(mask_pred)
+                    mask_pred = mask_pred * 2 - 1
+                else:
+                    mask_pred *= self.num_classes
+                    mask_pred[
+                        mask_pred == self.num_classes] = self.num_classes - 1
+                    mask_pred = mask_pred.int()
+                    mask_pred -= 1
                 # mask_pred += 1
                 # mask_pred = torch.round(mask_pred)
                 # mask_pred -= 1
