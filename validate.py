@@ -144,7 +144,7 @@ class Validation():
 
         else:
 
-            for _ in range(16 // batch_size):
+            for _ in range(1):
                 if condition == "label_dist":
                     label_dist = torch.rand(
                         batch_size, num_classes - 1).to(device)

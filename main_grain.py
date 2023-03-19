@@ -60,16 +60,16 @@ def main():
         shuffle=True)
 
     intensity_validation = Validation(config.get("img_channels"))
-    depth_validation = Validation(config.get("img_channels"))
+    # depth_validation = Validation(config.get("img_channels"))
 
     if config.get("pred_type") != "mask":
         intensity_validation.fit_real_samples(train_loader, channel=0)
-        depth_validation.fit_real_samples(train_loader, channel=1)
+        # depth_validation.fit_real_samples(train_loader, channel=1)
 
     mask_validation = None
     if config.get("pred_type") == "all" or config.get("pred_type") == "mask":
         mask_validation = Validation(config.get("img_channels"))
-        mask_validation.fit_real_samples(train_loader, channel=2)
+        mask_validation.fit_real_samples(train_loader, channel=1)
 
     if config.get("pred_type") == "all":
         if config.get("mask_one_hot"):
@@ -90,7 +90,6 @@ def main():
     checkpoint = None
     if config.get("checkpoint"):
         checkpoint = torch.load(config.get("checkpoint"))
-        print(f"loaded checkpoint {config.get('checkpoint')}")
 
     model = Unet(config.get("model_dim"),
                  device,
@@ -102,10 +101,10 @@ def main():
                  spade=config.get("condition") == "mask",
                  num_classes=config.get("num_classes"))
 
-    if checkpoint:
-        model.load_state_dict(checkpoint["model_state_dict"])
     if torch.cuda.device_count() > 1:
         model = torch.nn.parallel.DataParallel(model)
+    if checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
     model.to(device)
 
     if config.get("ema"):
@@ -205,16 +204,19 @@ def main():
             if config.get("pred_type") != "mask":
                 current_intensity_fid = intensity_validation.valid_fid(
                     samples[:, 0].cpu().detach())
-                current_depth_fid = depth_validation.valid_fid(
-                    samples[:, 1].cpu().detach())
-                current_image_fid = (
-                    current_intensity_fid + current_depth_fid) / 2
+                # current_depth_fid = depth_validation.valid_fid(
+                #     samples[:, 1].cpu().detach())
+                # current_image_fid = (
+                #     current_intensity_fid + current_depth_fid) / 2
+                current_image_fid = current_intensity_fid
                 best_metric = "fid_image"
             else:
                 best_metric = "fid_mask"
             if mask_validation is not None:
                 current_mask_fid = mask_validation.valid_fid(
                     sample_masks.cpu().detach())
+                current_image_fid = (
+                    current_intensity_fid + current_mask_fid) / 2
 
             eval_model.train()
 
@@ -263,25 +265,29 @@ def main():
                         cmap = cm.get_cmap("viridis")
                         sample_intensity = cmap(sample_intensity)[:, :, :3]
 
-                        sample_depth = samples[i, 1]
-                        sample_depth = (sample_depth.cpu().
-                                        detach().numpy())
-                        cmap = cm.get_cmap("viridis")
-                        sample_depth = cmap(sample_depth)[:, :, :3]
+                        # sample_depth = samples[i, 1]
+                        # sample_depth = (sample_depth.cpu().
+                        #                 detach().numpy())
+                        # cmap = cm.get_cmap("viridis")
+                        # sample_depth = cmap(sample_depth)[:, :, :3]
 
                     if sample_masks != []:
 
                         sample_mask = sample_masks[i]
+                        sample_mask = torch.round(sample_mask)
                         sample_mask = sample_mask.cpu().detach().numpy()
                         cmap = cm.get_cmap("viridis")
                         sample_mask = cmap(sample_mask)[:, :, :3]
 
                     if samples != [] and sample_masks != []:
                         sample = np.vstack(
-                            (sample_intensity, sample_depth, sample_mask))
+                            (sample_intensity, sample_mask))
                     elif samples != []:
-                        sample = np.vstack(
-                            (sample_intensity, sample_depth))
+                        # sample = np.vstack(
+                        #     (sample_intensity, sample_depth))
+                        # sample = np.vstack(
+                        #     (sample_intensity))
+                        sample = sample_intensity
                     else:
                         sample = sample_mask
                     wandb.log({f"Sample_{i}": wandb.Image(sample)},

@@ -14,17 +14,19 @@ import einops
 class GrainDataset(Dataset):
 
     def __init__(self, root_dir, img_size, image_idxs,
-                 mask_one_hot=False, num=1000, train=True):
+                 mask_one_hot=False, num=500, train=True):
 
         self.root_dir = root_dir
         self.num = num
         self.train = train
         self.image_idxs = image_idxs
         self.image_size = img_size
-        self.in_channels = ["intensity", "depth"]
+        self.in_channels = ["intensity"]
 
         self.crop_scale = transforms.Compose([
-            transforms.RandomCrop(img_size[0]),
+            transforms.RandomCrop(256),
+            transforms.Resize(
+                img_size[0], transforms.InterpolationMode.NEAREST),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomVerticalFlip(p=0.5),
             transforms.Lambda(lambda x: x * 2 - 1)
@@ -81,17 +83,17 @@ class GrainDataset(Dataset):
 
 
 # DEBUG
-grain_dataset = GrainDataset("data/grains_txt", (256, 256), [1, 4, 5], num=16,
-                             train=True)
-grain_dataloader = DataLoader(grain_dataset, batch_size=1)
+# grain_dataset = GrainDataset("data/grains_txt", (256, 256), [1, 4, 5], num=4,
+#                              train=True)
+# grain_dataloader = DataLoader(grain_dataset, batch_size=1)
 
-for batch in grain_dataloader:
-    # pass
-    print(batch["I"].shape)
-    print(torch.unique(batch["I"][0][0]))
-    __, ax = plt.subplots(3)
+# for batch in grain_dataloader:
+#     # pass
+#     # print(batch["I"].shape)
+#     # print(torch.unique(batch["I"][0][0]))
+#     # __, ax = plt.subplots(1)
 
-    ax[0].imshow(batch["I"][0][0], cmap="viridis", vmin=-1, vmax=1)
-    ax[1].imshow(batch["I"][0][1], cmap="viridis", vmin=-1, vmax=1)
-    ax[2].imshow(batch["I"][0][2], cmap="viridis", vmin=-1, vmax=1)
-    plt.show()
+#     plt.imshow(batch["I"][0][0], cmap="viridis", vmin=-1, vmax=1)
+#     # ax[1].imshow(batch["I"][1], cmap="viridis", vmin=-1, vmax=1)
+#     # ax[2].imshow(batch["I"][2], cmap="viridis", vmin=-1, vmax=1)
+#     plt.show()

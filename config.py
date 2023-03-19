@@ -3,24 +3,24 @@
 train_dataset = "data/grains_txt"
 
 raw_img_size = (448, 576)
-img_size = (256, 256)
-img_channels = 2
+img_size = (128, 128)
+img_channels = 1
 
 local = False
 use_wandb = True
 
-checkpoint = "wear_generation/best.pth"
+checkpoint = None
 
 # Model config
 
 beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
-schedule = "linear"
-model_dim = 128
+schedule = "cosine"
+model_dim = 256
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
-dropout = 0.1
+dropout = 0.0
 drop_condition_rate = 0.2
 guidance_scale = 2.0
 
@@ -34,11 +34,11 @@ num_classes = 2
 
 # Train config
 
-batch_size = 16
+batch_size = 64
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
-epochs = 1000
+epochs = 3000
 ema = False
 num_workers = 32
 loss = "hybrid"
