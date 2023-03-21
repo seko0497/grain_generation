@@ -60,11 +60,11 @@ def main():
         shuffle=True)
 
     intensity_validation = Validation(config.get("img_channels"))
-    # depth_validation = Validation(config.get("img_channels"))
+    depth_validation = Validation(config.get("img_channels"))
 
     if config.get("pred_type") != "mask":
         intensity_validation.fit_real_samples(train_loader, channel=0)
-        # depth_validation.fit_real_samples(train_loader, channel=1)
+        depth_validation.fit_real_samples(train_loader, channel=1)
 
     mask_validation = None
     if config.get("pred_type") == "all" or config.get("pred_type") == "mask":
@@ -204,11 +204,11 @@ def main():
             if config.get("pred_type") != "mask":
                 current_intensity_fid = intensity_validation.valid_fid(
                     samples[:, 0].cpu().detach())
-                # current_depth_fid = depth_validation.valid_fid(
-                #     samples[:, 1].cpu().detach())
+                current_depth_fid = depth_validation.valid_fid(
+                    samples[:, 1].cpu().detach())
                 # current_image_fid = (
                 #     current_intensity_fid + current_depth_fid) / 2
-                current_image_fid = current_intensity_fid
+                # current_image_fid = current_intensity_fid
                 best_metric = "fid_image"
             else:
                 best_metric = "fid_mask"
@@ -216,7 +216,8 @@ def main():
                 current_mask_fid = mask_validation.valid_fid(
                     sample_masks.cpu().detach())
                 current_image_fid = (
-                    current_intensity_fid + current_mask_fid) / 2
+                    current_intensity_fid + current_depth_fid +
+                    current_mask_fid) / 2
 
             eval_model.train()
 
@@ -265,11 +266,11 @@ def main():
                         cmap = cm.get_cmap("viridis")
                         sample_intensity = cmap(sample_intensity)[:, :, :3]
 
-                        # sample_depth = samples[i, 1]
-                        # sample_depth = (sample_depth.cpu().
-                        #                 detach().numpy())
-                        # cmap = cm.get_cmap("viridis")
-                        # sample_depth = cmap(sample_depth)[:, :, :3]
+                        sample_depth = samples[i, 1]
+                        sample_depth = (sample_depth.cpu().
+                                        detach().numpy())
+                        cmap = cm.get_cmap("viridis")
+                        sample_depth = cmap(sample_depth)[:, :, :3]
 
                     if sample_masks != []:
 
@@ -281,7 +282,7 @@ def main():
 
                     if samples != [] and sample_masks != []:
                         sample = np.vstack(
-                            (sample_intensity, sample_mask))
+                            (sample_intensity, sample_depth, sample_mask))
                     elif samples != []:
                         # sample = np.vstack(
                         #     (sample_intensity, sample_depth))
@@ -300,10 +301,10 @@ def main():
                            "fid_depth": current_depth_fid,
                            "best_epoch": best["epoch"],
                            "best_fid": best[best_metric]}
-                if (current_image_fid is not None
-                        and current_mask_fid is not None):
-                    fid_log["fid_mean"] = (
-                        (current_image_fid + current_mask_fid) / 2)
+                # if (current_image_fid is not None
+                #         and current_mask_fid is not None):
+                #     fid_log["fid_mean"] = (
+                #         (current_image_fid + current_mask_fid) / 2)
                 wandb.log(fid_log, step=epoch, commit=False)
 
         if config.get("use_wandb"):

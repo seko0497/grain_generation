@@ -367,6 +367,25 @@ class SinusoidalPosEmb(nn.Module):
         return emb
 
 
+class SuperResUnet(Unet):
+
+    def __init__(self, dim, device, dim_mults=(1, 2, 4, 8), in_channels=3,
+                 out_channels=3, resnet_block_groups=32, num_resnet_blocks=2,
+                 attention_dims=(32, 16, 8), dropout=0, spade=False,
+                 num_classes=None):
+        super().__init__(dim, device, dim_mults, in_channels * 2, out_channels,
+                         resnet_block_groups, num_resnet_blocks,
+                         attention_dims, dropout, spade, num_classes)
+
+    def forward(self, x, t, low_res=None):
+
+        upsampled = torch.nn.functional.interpolate(
+            low_res, (x.shape[2], x.shape[3]), mode="bilinear")
+        x = torch.cat((x, upsampled), dim=1)
+        return super().forward(x, t)
+    
+
+
 # x = torch.empty((4, 3, 64, 64))
 
 # model = Unet(128, torch.device("cpu"), dim_mults=[1, 1, 2, 2, 4, 4],

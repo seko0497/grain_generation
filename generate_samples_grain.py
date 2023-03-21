@@ -3,6 +3,7 @@ from matplotlib import cm, colors, pyplot as plt
 import numpy as np
 import torch
 from tqdm import tqdm
+import wandb
 from diffusion import Diffusion, get_schedule
 from unet import Unet
 from PIL import Image
@@ -11,22 +12,26 @@ from dataset_wear import WearDataset
 
 from validate import Validation
 
-checkpoint = torch.load("grain_generation/models/custard-strudel-12/950.pth")
-wandb_name = "custard-strudel-12"
+# checkpoint = torch.load("grain_generation/models/custard-strudel-12/950.pth")
+wandb_name = "sleek-leaf-10"
 
-img_size = (256, 256)
+run_path = "vm-ml/grain_generation/z93f0mk2"
+checkpoint = wandb.restore("wear_generation/best.pth", run_path=run_path)
+checkpoint = torch.load(checkpoint.name)
 
-model_dim = 128
+img_size = (64, 64)
+
+model_dim = 256
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 
-beta_0 = 0.0001
-beta_t = 0.02
-timesteps = 1000
-schedule = "linear"
-sampling_steps = 100
+beta_0 = 0.000025
+beta_t = 0.005
+timesteps = 4000
+schedule = "cosine"
+sampling_steps = 1000
 
-batch_size = 1
+batch_size = 64
 
 loss = "hybrid"
 pred_mask = "naive"
@@ -36,7 +41,7 @@ grid_size = [4, 4]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-in_channels = 3
+in_channels = 2
 out_channels = (in_channels * 2 if loss == "hybrid"
                 else in_channels)
 
@@ -83,7 +88,7 @@ diffusion = Diffusion(
 #     sample_masks = torch.moveaxis(torch.Tensor(sample_masks), -1, 1)
 #     samples = torch.cat((sample_images, torch.Tensor(sample_masks)), dim=2)
 
-save_folder = f"grain_generation/samples/{wandb_name}/950"
+save_folder = f"grain_generation/samples/{wandb_name}/5000"
 
 validation = Validation(img_channels=2)
 # samples, sample_masks, _ = validation.generate_samples(
@@ -97,20 +102,24 @@ validation = Validation(img_channels=2)
 #     model=model,
 #     device=device)
 
-for i in range(16):
+samples, sample_masks, _ = validation.generate_samples(
+    "None",
+    pred_type="all",
+    img_channels=1,
+    num_classes=2,
+    diffusion=diffusion,
+    sampling_steps=sampling_steps,
+    batch_size=batch_size,
+    model=model,
+    device=device)
 
-    samples, sample_masks, _ = validation.generate_samples(
-        "None",
-        pred_type="all",
-        img_channels=2,
-        num_classes=2,
-        diffusion=diffusion,
-        sampling_steps=sampling_steps,
-        batch_size=batch_size,
-        model=model,
-        device=device)
+for i in range(batch_size):
 
-    sample_intensity = samples[0, 0]
+    sample_intensity = samples[i, 0]
+    sample_intensity = torch.nn.functional.interpolate(
+        sample_intensity[None, None],
+        (128, 128),
+        mode="nearest-exact")[0, 0]
     sample_intensity = (sample_intensity.cpu().
                         detach().numpy())
     # normalizer = colors.Normalize()
@@ -121,24 +130,31 @@ for i in range(16):
     sample_intensity = cmap(sample_intensity)[:, :, :3]
     # axes[1].imshow(sample_intensity)
 
-    sample_depth = samples[0, 1]
-    sample_depth = (sample_depth.cpu().
-                    detach().numpy())
-    cmap = cm.get_cmap("viridis")
-    sample_depth = cmap(sample_depth)[:, :, :3]
+    # sample_depth = samples[0, 1]
+    # sample_depth = (sample_depth.cpu().
+    #                 detach().numpy())
+    # cmap = cm.get_cmap("viridis")
+    # sample_depth = cmap(sample_depth)[:, :, :3]
 
-    sample_mask = sample_masks[0]
+    sample_mask = sample_masks[i]
+    sample_mask = torch.round(sample_mask)
+    sample_mask = torch.nn.functional.interpolate(
+        sample_mask[None, None],
+        (128, 128),
+        mode="nearest-exact"
+    )[0, 0]
     sample_mask = sample_mask.cpu().detach().numpy()
     cmap = cm.get_cmap("viridis")
     sample_mask = cmap(sample_mask)[:, :, :3]
 
-    sample = np.vstack((sample_intensity, sample_depth, sample_mask))
+    sample = np.vstack((sample_intensity, sample_mask))
 
     sample = (sample * 255).astype(np.uint8)
     image = Image.fromarray(sample)
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
-    image.save(f"{save_folder}/sample_{i + 16}.png")
+    image.save(f"{save_folder}/sample_{i}.png")
+quit()
 
 if grid:
 
