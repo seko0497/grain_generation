@@ -117,11 +117,13 @@ class Validation():
 
     def generate_samples(self, condition, pred_type, img_channels, num_classes,
                          diffusion, sampling_steps, batch_size, model, device,
-                         valid_loader=None, guidance_scale=0.2):
+                         super_res=False, valid_loader=None,
+                         guidance_scale=0.2):
 
         samples = []
         sample_masks = []
         label_dists = []
+        low_res_images = []
 
         # sample
         if condition == "mask":
@@ -130,17 +132,39 @@ class Validation():
 
                 sample_mask = batch["I"][:, img_channels:]
                 sample_masks.append(sample_mask)
-                sample_batch = diffusion.sample(model,
-                                                sample_mask.shape[0],
-                                                mask=sample_mask.to(
-                                                    device),
-                                                label_dist=None,
-                                                sampling_steps=sampling_steps,
-                                                pred_type=pred_type,
-                                                img_channels=img_channels,
-                                                guidance_scale=guidance_scale)
+                sample_batch = diffusion.sample(
+                    model,
+                    sample_mask.shape[0],
+                    mask=sample_mask.to(
+                        device),
+                    label_dist=None,
+                    sampling_steps=sampling_steps,
+                    pred_type=pred_type,
+                    img_channels=img_channels,
+                    guidance_scale=guidance_scale)
                 samples.append(sample_batch)
             sample_masks = torch.cat(sample_masks)
+            samples = torch.cat(samples)
+
+        elif super_res:
+
+            for batch in valid_loader:
+                batch = batch["I"][0, :batch_size]
+                low_res = torch.nn.functional.interpolate(
+                    batch, (64, 64), mode="nearest")
+                low_res_images.append(low_res)
+                sample_batch = diffusion.sample(
+                    model,
+                    batch.shape[0],
+                    mask=None,
+                    label_dist=None,
+                    low_res=low_res.to(device),
+                    sampling_steps=sampling_steps,
+                    pred_type=pred_type,
+                    img_channels=img_channels,
+                    guidance_scale=guidance_scale)
+            samples = sample_batch
+            low_res_images = torch.cat(low_res_images)
 
         else:
 
@@ -158,7 +182,7 @@ class Validation():
                                                 pred_type=pred_type,
                                                 img_channels=img_channels,
                                                 guidance_scale=guidance_scale))
-        samples = torch.cat(samples)
+            samples = torch.cat(samples)
 
         # split images and masks
         if pred_type == "all":
@@ -180,7 +204,7 @@ class Validation():
         if label_dists != []:
             label_dists = torch.cat(label_dists)
 
-        return samples, sample_masks, label_dists
+        return samples, sample_masks, label_dists, low_res_images
 
     def label_dist_rmse(self, pred_masks, label_dists, scaler):
 

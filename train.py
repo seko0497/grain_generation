@@ -8,7 +8,7 @@ from diffusion import Diffusion
 def train(
     model, diffusion: Diffusion, timesteps, device, data_loader, optimizer,
         epoch, loss_fn, ema=None, pred_type="all", condition="None",
-        img_channels=3, drop_rate=0.2):
+        super_res=False, img_channels=3, drop_rate=0.2):
 
     model.train()
     epoch_loss = 0
@@ -48,8 +48,13 @@ def train(
         # Forward pass
         optimizer.zero_grad()
 
-        output = model(noisy_image, t.to(device), mask=mask,
-                       label_dist=label_dist)
+        if not super_res:
+            output = model(noisy_image, t.to(device), mask=mask,
+                           label_dist=label_dist)
+        else:
+            low_res = torch.nn.functional.interpolate(
+                x_0, (64, 64), mode="nearest")
+            output = model(noisy_image, t.to(device), low_res=low_res)
 
         # Backward pass
 

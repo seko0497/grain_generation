@@ -14,19 +14,19 @@ import einops
 class GrainDataset(Dataset):
 
     def __init__(self, root_dir, img_size, image_idxs,
-                 mask_one_hot=False, num=500, train=True):
+                 mask_one_hot=False, num=10, train=True):
 
         self.root_dir = root_dir
         self.num = num
         self.train = train
         self.image_idxs = image_idxs
         self.image_size = img_size
-        self.in_channels = ["intensity"]
+        self.in_channels = ["intensity", "depth"]
 
         self.crop_scale = transforms.Compose([
             transforms.RandomCrop(256),
-            transforms.Resize(
-                img_size[0], transforms.InterpolationMode.NEAREST),
+            # transforms.Resize(
+            #     img_size[0], transforms.InterpolationMode.BILINEAR),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomVerticalFlip(p=0.5),
             transforms.Lambda(lambda x: x * 2 - 1)
@@ -82,8 +82,8 @@ class GrainDataset(Dataset):
         return {"I": image}
 
 
-# DEBUG
-# grain_dataset = GrainDataset("data/grains_txt", (256, 256), [1, 4, 5], num=4,
+# # DEBUG
+# grain_dataset = GrainDataset("data/grains_txt", (64, 64), [1, 4, 5], num=4,
 #                              train=True)
 # grain_dataloader = DataLoader(grain_dataset, batch_size=1)
 
@@ -91,9 +91,23 @@ class GrainDataset(Dataset):
 #     # pass
 #     # print(batch["I"].shape)
 #     # print(torch.unique(batch["I"][0][0]))
-#     # __, ax = plt.subplots(1)
+#     __, ax = plt.subplots(2, 3)
 
-#     plt.imshow(batch["I"][0][0], cmap="viridis", vmin=-1, vmax=1)
-#     # ax[1].imshow(batch["I"][1], cmap="viridis", vmin=-1, vmax=1)
-#     # ax[2].imshow(batch["I"][2], cmap="viridis", vmin=-1, vmax=1)
+#     high_res = batch["I"]
+#     batch = torch.nn.functional.interpolate(
+#                 batch["I"], (64, 64), mode="nearest")
+#     batch = torch.nn.functional.interpolate(
+#                 batch, (256, 256), mode="nearest")
+    
+#     ax[0, 0].imshow(batch[0][0], cmap="viridis", vmin=-1, vmax=1)
+#     ax[0, 1].imshow(batch[0][1], cmap="viridis", vmin=-1, vmax=1)
+#     ax[0, 2].imshow(batch[0][2], cmap="viridis", vmin=-1, vmax=1)
+#     ax[1, 0].imshow(high_res[0][0], cmap="viridis", vmin=-1, vmax=1)
+#     ax[1, 1].imshow(high_res[0][1], cmap="viridis", vmin=-1, vmax=1)
+#     ax[1, 2].imshow(high_res[0][2], cmap="viridis", vmin=-1, vmax=1)
 #     plt.show()
+
+#     # ax[0].imshow(batch["I"][0][0], cmap="viridis", vmin=-1, vmax=1)
+#     # ax[1].imshow(batch["I"][0][1], cmap="viridis", vmin=-1, vmax=1)
+#     # ax[2].imshow(batch["I"][0][2], cmap="viridis", vmin=-1, vmax=1)
+#     # plt.show()

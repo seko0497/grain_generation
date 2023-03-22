@@ -380,11 +380,9 @@ class SuperResUnet(Unet):
     def forward(self, x, t, low_res=None):
 
         upsampled = torch.nn.functional.interpolate(
-            low_res, (x.shape[2], x.shape[3]), mode="bilinear")
+            low_res, (x.shape[2], x.shape[3]), mode="nearest")
         x = torch.cat((x, upsampled), dim=1)
         return super().forward(x, t)
-    
-
 
 # x = torch.empty((4, 3, 64, 64))
 

@@ -68,8 +68,9 @@ class Diffusion:
         return (sqrt_alphas_cumprod_t * x_0 +
                 sqrt_one_minus_alphas_cumprod_t * noise), noise
 
-    def sample(self, model, n, mask=None, label_dist=None, sampling_steps=None,
-               guidance_scale=0.2, pred_type="all", img_channels=3):
+    def sample(self, model, n, mask=None, label_dist=None, low_res=None,
+               sampling_steps=None, guidance_scale=0.2, pred_type="all",
+               img_channels=3):
 
         model.eval()
         with torch.no_grad():
@@ -101,10 +102,16 @@ class Diffusion:
             for t in tqdm(
                  reversed(range(len(timesteps))), total=len(timesteps)):
 
-                prediction = model(
-                    x.to(self.device),
-                    torch.full((n,), timesteps[t]).to(self.device),
-                    mask=mask, label_dist=label_dist)
+                if low_res is None:
+                    prediction = model(
+                        x.to(self.device),
+                        torch.full((n,), timesteps[t]).to(self.device),
+                        mask=mask, label_dist=label_dist)
+                else:
+                    prediction = model(
+                        x.to(self.device),
+                        torch.full((n,), timesteps[t]).to(self.device),
+                        low_res)
 
                 if mask is not None or label_dist is not None:
 

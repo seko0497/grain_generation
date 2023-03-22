@@ -4,7 +4,7 @@ import torch
 import wandb
 from config import config as config_dict
 from torch.utils.data import DataLoader
-from unet import Unet
+from unet import Unet, SuperResUnet
 from train import train
 from losses import HybridLoss
 
@@ -53,7 +53,7 @@ def main():
         image_idxs=[9],
         mask_one_hot=config.get("mask_one_hot"),
         train=False,
-    ), batch_size=config.get("batch_size"),
+    ), batch_size=1,
         num_workers=config.get("num_workers"),
         persistent_workers=persistent_workers,
         pin_memory=True,
@@ -69,7 +69,7 @@ def main():
     mask_validation = None
     if config.get("pred_type") == "all" or config.get("pred_type") == "mask":
         mask_validation = Validation(config.get("img_channels"))
-        mask_validation.fit_real_samples(train_loader, channel=1)
+        mask_validation.fit_real_samples(train_loader, channel=2)
 
     if config.get("pred_type") == "all":
         if config.get("mask_one_hot"):
@@ -91,15 +91,26 @@ def main():
     if config.get("checkpoint"):
         checkpoint = torch.load(config.get("checkpoint"))
 
-    model = Unet(config.get("model_dim"),
-                 device,
-                 in_channels=in_channels,
-                 out_channels=out_channels,
-                 dim_mults=config.get("dim_mults"),
-                 num_resnet_blocks=config.get("num_resnet_blocks"),
-                 dropout=config.get("dropout"),
-                 spade=config.get("condition") == "mask",
-                 num_classes=config.get("num_classes"))
+    if not config.get("super_res"):
+        model = Unet(config.get("model_dim"),
+                     device,
+                     in_channels=in_channels,
+                     out_channels=out_channels,
+                     dim_mults=config.get("dim_mults"),
+                     num_resnet_blocks=config.get("num_resnet_blocks"),
+                     dropout=config.get("dropout"),
+                     spade=config.get("condition") == "mask",
+                     num_classes=config.get("num_classes"))
+    else:
+        model = SuperResUnet(config.get("model_dim"),
+                             device,
+                             in_channels=in_channels,
+                             out_channels=out_channels,
+                             dim_mults=config.get("dim_mults"),
+                             num_resnet_blocks=config.get("num_resnet_blocks"),
+                             dropout=config.get("dropout"),
+                             spade=config.get("condition") == "mask",
+                             num_classes=config.get("num_classes"))
 
     if torch.cuda.device_count() > 1:
         model = torch.nn.parallel.DataParallel(model)
@@ -164,6 +175,7 @@ def main():
                            img_channels=config.get("img_channels"),
                            pred_type=config.get("pred_type"),
                            condition=config.get("condition"),
+                           super_res=config.get("super_res"),
                            drop_rate=config.get("drop_condition_rate"))
 
         if (epoch % config.get("evaluate_every") == 0 and
@@ -177,7 +189,7 @@ def main():
             eval_model.eval()
 
             validation = Validation(config.get("img_channels"))
-            samples, sample_masks, label_dists = validation.generate_samples(
+            samples, sample_masks, label_dists, low_res = validation.generate_samples(
                 config.get("condition"),
                 config.get("pred_type"),
                 config.get("img_channels"),
@@ -187,8 +199,10 @@ def main():
                 config.get("batch_size"),
                 eval_model,
                 device,
+                config.get("super_res"),
                 valid_loader,
                 guidance_scale=config.get("guidance_scale"))
+            sample_masks = torch.round(sample_masks)
 
             if config.get("condition") == "label_dist":
                 label_dist_rmse = validation.label_dist_rmse(
@@ -275,7 +289,6 @@ def main():
                     if sample_masks != []:
 
                         sample_mask = sample_masks[i]
-                        sample_mask = torch.round(sample_mask)
                         sample_mask = sample_mask.cpu().detach().numpy()
                         cmap = cm.get_cmap("viridis")
                         sample_mask = cmap(sample_mask)[:, :, :3]
@@ -291,6 +304,19 @@ def main():
                         sample = sample_intensity
                     else:
                         sample = sample_mask
+
+                    low_res = torch.nn.functional.interpolate(
+                        low_res, (sample.shape[1], sample.shape[1]),
+                        mode="nearest")
+                    low_res_cmap = []
+                    for low_res_channel in low_res[i]:
+                        cmap = cm.get_cmap("viridis")
+                        low_res_channel = cmap(low_res_channel)[:, :, :3]
+                        low_res_cmap.append(low_res_channel)
+                    low_res_cmap = np.vstack(low_res_cmap)
+
+                    sample = np.hstack((low_res_cmap, sample))
+
                     wandb.log({f"Sample_{i}": wandb.Image(sample)},
                               step=epoch, commit=False)
 
