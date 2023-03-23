@@ -202,7 +202,7 @@ def main():
                 config.get("super_res"),
                 valid_loader,
                 guidance_scale=config.get("guidance_scale"))
-            sample_masks = torch.round(sample_masks)
+            # sample_masks = torch.round(sample_masks)
 
             if config.get("condition") == "label_dist":
                 label_dist_rmse = validation.label_dist_rmse(
@@ -305,17 +305,17 @@ def main():
                     else:
                         sample = sample_mask
 
-                    low_res = torch.nn.functional.interpolate(
-                        low_res, (sample.shape[1], sample.shape[1]),
-                        mode="nearest")
-                    low_res_cmap = []
-                    for low_res_channel in low_res[i]:
-                        cmap = cm.get_cmap("viridis")
-                        low_res_channel = cmap(low_res_channel)[:, :, :3]
-                        low_res_cmap.append(low_res_channel)
-                    low_res_cmap = np.vstack(low_res_cmap)
-
-                    sample = np.hstack((low_res_cmap, sample))
+                    if low_res != []:
+                        low_res = torch.nn.functional.interpolate(
+                            low_res, (sample.shape[1], sample.shape[1]),
+                            mode="nearest")
+                        low_res_cmap = []
+                        for low_res_channel in low_res[i]:
+                            cmap = cm.get_cmap("viridis")
+                            low_res_channel = cmap(low_res_channel)[:, :, :3]
+                            low_res_cmap.append(low_res_channel)
+                        low_res_cmap = np.vstack(low_res_cmap)
+                        sample = np.hstack((low_res_cmap, sample))
 
                     wandb.log({f"Sample_{i}": wandb.Image(sample)},
                               step=epoch, commit=False)

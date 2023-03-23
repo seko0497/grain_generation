@@ -14,7 +14,7 @@ import einops
 class GrainDataset(Dataset):
 
     def __init__(self, root_dir, img_size, image_idxs,
-                 mask_one_hot=False, num=10, train=True):
+                 mask_one_hot=False, num=500, train=True):
 
         self.root_dir = root_dir
         self.num = num
@@ -25,8 +25,6 @@ class GrainDataset(Dataset):
 
         self.crop_scale = transforms.Compose([
             transforms.RandomCrop(256),
-            # transforms.Resize(
-            #     img_size[0], transforms.InterpolationMode.BILINEAR),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.RandomVerticalFlip(p=0.5),
             transforms.Lambda(lambda x: x * 2 - 1)
@@ -59,6 +57,8 @@ class GrainDataset(Dataset):
             index = np.random.randint(0, len(self.images))
 
             image = self.crop_scale(self.images[index])
+            image = torch.nn.functional.interpolate(
+                image[None], self.image_size, mode="area")[0]
 
         else:
 
@@ -91,23 +91,34 @@ class GrainDataset(Dataset):
 #     # pass
 #     # print(batch["I"].shape)
 #     # print(torch.unique(batch["I"][0][0]))
-#     __, ax = plt.subplots(2, 3)
+#     __, ax = plt.subplots(4, 3)
 
 #     high_res = batch["I"]
-#     batch = torch.nn.functional.interpolate(
+#     batch_area = torch.nn.functional.interpolate(
+#                 batch["I"], (64, 64), mode="area")
+#     batch_area[:, -1] = torch.round(batch_area[:, -1])
+#     batch_bilinear = torch.nn.functional.interpolate(
+#                 batch["I"], (64, 64), mode="bilinear")
+#     batch_nearest = torch.nn.functional.interpolate(
 #                 batch["I"], (64, 64), mode="nearest")
-#     batch = torch.nn.functional.interpolate(
-#                 batch, (256, 256), mode="nearest")
-    
-#     ax[0, 0].imshow(batch[0][0], cmap="viridis", vmin=-1, vmax=1)
-#     ax[0, 1].imshow(batch[0][1], cmap="viridis", vmin=-1, vmax=1)
-#     ax[0, 2].imshow(batch[0][2], cmap="viridis", vmin=-1, vmax=1)
-#     ax[1, 0].imshow(high_res[0][0], cmap="viridis", vmin=-1, vmax=1)
-#     ax[1, 1].imshow(high_res[0][1], cmap="viridis", vmin=-1, vmax=1)
-#     ax[1, 2].imshow(high_res[0][2], cmap="viridis", vmin=-1, vmax=1)
+#     # batch = torch.nn.functional.interpolate(
+#     #             batch, (256, 256), mode="nearest")
+
+#     ax[0, 0].imshow(batch_area[0][0], cmap="viridis", vmin=-1, vmax=1)
+#     ax[0, 1].imshow(batch_area[0][1], cmap="viridis", vmin=-1, vmax=1)
+#     ax[0, 2].imshow(batch_area[0][2], cmap="viridis", vmin=-1, vmax=1)
+#     ax[1, 0].imshow(batch_bilinear[0][0], cmap="viridis", vmin=-1, vmax=1)
+#     ax[1, 1].imshow(batch_bilinear[0][1], cmap="viridis", vmin=-1, vmax=1)
+#     ax[1, 2].imshow(batch_bilinear[0][2], cmap="viridis", vmin=-1, vmax=1)
+#     ax[2, 0].imshow(batch_nearest[0][0], cmap="viridis", vmin=-1, vmax=1)
+#     ax[2, 1].imshow(batch_nearest[0][1], cmap="viridis", vmin=-1, vmax=1)
+#     ax[2, 2].imshow(batch_nearest[0][2], cmap="viridis", vmin=-1, vmax=1)
+#     ax[3, 0].imshow(high_res[0][0], cmap="viridis", vmin=-1, vmax=1)
+#     ax[3, 1].imshow(high_res[0][1], cmap="viridis", vmin=-1, vmax=1)
+#     ax[3, 2].imshow(high_res[0][2], cmap="viridis", vmin=-1, vmax=1)
 #     plt.show()
 
-#     # ax[0].imshow(batch["I"][0][0], cmap="viridis", vmin=-1, vmax=1)
-#     # ax[1].imshow(batch["I"][0][1], cmap="viridis", vmin=-1, vmax=1)
-#     # ax[2].imshow(batch["I"][0][2], cmap="viridis", vmin=-1, vmax=1)
-#     # plt.show()
+    # ax[0].imshow(batch["I"][0][0], cmap="viridis", vmin=-1, vmax=1)
+    # ax[1].imshow(batch["I"][0][1], cmap="viridis", vmin=-1, vmax=1)
+    # ax[2].imshow(batch["I"][0][2], cmap="viridis", vmin=-1, vmax=1)
+    # plt.show()
