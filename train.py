@@ -1,3 +1,4 @@
+from matplotlib import pyplot as plt
 from tqdm import tqdm
 import torch
 
@@ -6,8 +7,8 @@ from diffusion import Diffusion
 
 def train(
     model, diffusion: Diffusion, timesteps, device, data_loader, optimizer,
-        epoch, loss_fn, ema=None, pred_type="all", img_channels=3,
-        drop_rate=0.2):
+        epoch, loss_fn, ema=None, pred_type="all", condition="None",
+        super_res=False, img_channels=3, drop_rate=0.2):
 
     model.train()
     epoch_loss = 0
@@ -24,10 +25,11 @@ def train(
                 x_0 = x_0 * 2 - 1
         else:
             x_0 = batch["I"][:, :img_channels].to(device)
-            mask = batch["I"][:, img_channels:].to(device)
-            drop_mask = (
-                torch.rand((mask.shape[0], 1, 1, 1)) > drop_rate).float()
-            mask *= drop_mask.to(device)
+            if condition == "mask":
+                mask = batch["I"][:, img_channels:].to(device)
+                drop_mask = (
+                    torch.rand((mask.shape[0], 1, 1, 1)) > drop_rate).float()
+                mask *= drop_mask.to(device)
 
         if "L" in batch.keys():
             label_dist = batch["L"].to(device)
@@ -46,8 +48,13 @@ def train(
         # Forward pass
         optimizer.zero_grad()
 
-        output = model(noisy_image, t.to(device), mask=mask,
-                       label_dist=label_dist)
+        if not super_res:
+            output = model(noisy_image, t.to(device), mask=mask,
+                           label_dist=label_dist)
+        else:
+            low_res = torch.nn.functional.interpolate(
+                x_0, (64, 64), mode="nearest")
+            output = model(noisy_image, t.to(device), low_res=low_res)
 
         # Backward pass
 

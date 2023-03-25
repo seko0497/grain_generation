@@ -3,13 +3,10 @@ from matplotlib import cm
 import numpy as np
 import torch
 from torchmetrics.image.fid import FrechetInceptionDistance
-from torch.utils.data import DataLoader
 from tqdm import tqdm
-from dataset_wear import WearDataset
-import wandb
 
-from losses import HybridLoss, normal_kl
-from diffusion import Diffusion
+from losses import HybridLoss
+from image_transforms import get_rgb
 
 
 class Validation():
@@ -20,30 +17,27 @@ class Validation():
             normalize=True, reset_real_features=False)
         self.img_channels = img_channels
 
-    def fit_real_samples(self, dataloader, fit_masks=False):
+    def fit_real_samples(self, dataloader, channel=None, one_hot=False):
+        """
+        Fits real samples of a dataloader for FID calculation.
+        If channel is not None it converts the given channel to a rgb colormap.
+        """
 
-        for batch in dataloader:
-            if fit_masks:
-                masks = batch["I"][:, self.img_channels:]
-                if masks.shape[1] != 1:
+        for batch in tqdm(dataloader):
+
+            if channel != -1 or one_hot:
+                if one_hot:
                     masks_argmax = torch.argmax(
-                            masks, dim=1, keepdim=True).float()
-                    masks = masks_argmax / (masks.shape[1] - 1)
-                else:
-                    masks = (masks + 1) / 2
-                masks = masks[:, 0]
-                cmap = cm.get_cmap("viridis")
-                cm_masks = []
-                for mask in masks:
-                    cm_mask = cmap(np.array(mask))[:, :, :3]
-                    cm_masks.append(
-                        torch.moveaxis(torch.Tensor(cm_mask), -1, 0))
-                real_samples = torch.stack(cm_masks)
-
+                            batch["I"], dim=1).float()
+                    map = masks_argmax / (batch["I"].shape[1] - 1)
+                elif channel != -1:
+                    map = batch["I"][:, channel]
+                    map = (map + 1) / 2
+                image = torch.Tensor(get_rgb(map))
+                image = torch.moveaxis(image, -1, 1)
             else:
-                real_samples = (batch["I"][:, :self.img_channels] + 1) / 2
-
-            self.fid.update(real_samples, real=True)
+                image = (batch["I"][:, :self.img_channels] + 1) / 2
+            self.fid.update(image, real=True)
 
     def valid_hybrid_loss(
             self, model, data_loader, device, diffusion, timesteps,
@@ -103,89 +97,104 @@ class Validation():
         model.train()
         return epoch_loss / len(data_loader)
 
-    def valid_fid(self, samples, masks=False):
+    def valid_fid(self, samples, one_hot=False):
 
-        if masks:
-            fid_masks = []
-            cmap = cm.get_cmap("viridis")
-            for mask in samples:
-                mask = cmap(np.array(mask))[:, :, :3]
-                fid_masks.append(torch.moveaxis(torch.Tensor(mask), -1, 0))
-            fid_masks = torch.stack(fid_masks)
-
-            samples = fid_masks
+        if len(samples.shape) == 3 or one_hot:
+            if one_hot:
+                masks_argmax = torch.argmax(
+                        samples, dim=1).float()
+                map = masks_argmax / (samples.shape[1] - 1)
+            elif len(samples.shape) == 3:
+                map = (samples + 1) / 2
+            image = torch.Tensor(get_rgb(map))
+            image = torch.moveaxis(image, -1, 1)
+        else:
+            image = (samples + 1) / 2
 
         self.fid.reset()
-        self.fid.update(samples.cpu(), real=False)
+        self.fid.update(image.cpu(), real=False)
         fid = self.fid.compute()
 
         return fid
 
     def generate_samples(self, condition, pred_type, img_channels, num_classes,
                          diffusion, sampling_steps, batch_size, model, device,
-                         valid_loader=None, guidance_scale=0.2):
+                         super_res=False, valid_loader=None,
+                         guidance_scale=0.2):
 
+        sample_dict = {}
         samples = []
-        sample_masks = []
         label_dists = []
 
         # sample
         if condition == "mask":
-
             for batch in valid_loader:
-
                 sample_mask = batch["I"][:, img_channels:]
                 sample_masks.append(sample_mask)
-                sample_batch = diffusion.sample(model,
-                                                sample_mask.shape[0],
-                                                mask=sample_mask.to(
-                                                    device),
-                                                label_dist=None,
-                                                sampling_steps=sampling_steps,
-                                                pred_type=pred_type,
-                                                img_channels=img_channels,
-                                                guidance_scale=guidance_scale)
+                sample_batch = diffusion.sample(
+                    model,
+                    sample_mask.shape[0],
+                    mask=sample_mask.to(
+                        device),
+                    label_dist=None,
+                    sampling_steps=sampling_steps,
+                    pred_type=pred_type,
+                    img_channels=img_channels,
+                    guidance_scale=guidance_scale)
                 samples.append(sample_batch)
             sample_masks = torch.cat(sample_masks)
+            samples = torch.cat(samples)
+
+        elif super_res:
+
+            for batch in valid_loader:
+                batch = batch["I"][0, :batch_size]
+                low_res = torch.nn.functional.interpolate(
+                    batch, (64, 64), mode="nearest")
+                low_res_images.append(low_res)
+                sample_batch = diffusion.sample(
+                    model,
+                    batch.shape[0],
+                    mask=None,
+                    label_dist=None,
+                    low_res=low_res.to(device),
+                    sampling_steps=sampling_steps,
+                    pred_type=pred_type,
+                    img_channels=img_channels,
+                    guidance_scale=guidance_scale)
+            samples = sample_batch
+            low_res_images = torch.cat(low_res_images)
 
         else:
 
-            for _ in range(128 // batch_size):
-                if condition == "label_dist":
-                    label_dist = torch.rand(
-                        batch_size, num_classes - 1).to(device)
-                    label_dists.append(label_dist)
-                else:
-                    label_dist = None
-                samples.append(diffusion.sample(model, batch_size,
-                                                mask=None,
-                                                label_dist=label_dist,
-                                                sampling_steps=sampling_steps,
-                                                pred_type=pred_type,
-                                                img_channels=img_channels,
-                                                guidance_scale=guidance_scale))
-        samples = torch.cat(samples)
+            if condition == "label_dist":
+                label_dist = torch.rand(
+                    batch_size, num_classes - 1).to(device)
+                label_dists.append(label_dist)
+                label_dists = torch.cat(label_dists)
+                sample_dict["label_dists"] = label_dists
+            else:
+                label_dist = None
+
+            samples.append(diffusion.sample(
+                model,
+                batch_size,
+                mask=None,
+                label_dist=label_dist,
+                sampling_steps=sampling_steps,
+                pred_type=pred_type,
+                img_channels=img_channels,
+                guidance_scale=guidance_scale))
+            samples = torch.cat(samples)
 
         # split images and masks
         if pred_type == "all":
-            sample_masks = samples[:, img_channels:]
-            samples = samples[:, :img_channels]
+            sample_dict["masks"] = samples[:, img_channels:]
+            sample_dict["images"] = samples[:, :img_channels]
         elif pred_type == "mask":
-            sample_masks = samples
-            samples = []
+            sample_dict["masks"] = samples
 
-        # convert masks to have one channel
-        if sample_masks.shape[1] == num_classes:
-            sample_masks = torch.argmax(
-                            sample_masks, dim=1).float()
-            sample_masks = sample_masks / (num_classes - 1)
-        else:
-            sample_masks = sample_masks[:, 0]
-
-        if label_dists != []:
-            label_dists = torch.cat(label_dists)
-
-        return samples, sample_masks, label_dists
+        return sample_dict
 
     def label_dist_rmse(self, pred_masks, label_dists, scaler):
 

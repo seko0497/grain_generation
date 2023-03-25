@@ -7,13 +7,14 @@ from tqdm import tqdm
 class Diffusion:
 
     def __init__(self, betas, timesteps, img_size, in_channels, device,
-                 use_wandb=False):
+                 use_wandb=False, num_classes=3):
 
         self.use_wandb = use_wandb
 
         self.timesteps = timesteps
         self.image_size = img_size
         self.in_channels = in_channels
+        self.num_classes = num_classes
 
         self.betas = betas
         self.calculate_alphas(self.betas)
@@ -67,8 +68,9 @@ class Diffusion:
         return (sqrt_alphas_cumprod_t * x_0 +
                 sqrt_one_minus_alphas_cumprod_t * noise), noise
 
-    def sample(self, model, n, mask=None, label_dist=None, sampling_steps=None,
-               guidance_scale=0.2, pred_type="all", img_channels=3):
+    def sample(self, model, n, mask=None, label_dist=None, low_res=None,
+               sampling_steps=None, guidance_scale=0.2, pred_type="all",
+               img_channels=3):
 
         model.eval()
         with torch.no_grad():
@@ -100,10 +102,16 @@ class Diffusion:
             for t in tqdm(
                  reversed(range(len(timesteps))), total=len(timesteps)):
 
-                prediction = model(
-                    x.to(self.device),
-                    torch.full((n,), timesteps[t]).to(self.device),
-                    mask=mask, label_dist=label_dist)
+                if low_res is None:
+                    prediction = model(
+                        x.to(self.device),
+                        torch.full((n,), timesteps[t]).to(self.device),
+                        mask=mask, label_dist=label_dist)
+                else:
+                    prediction = model(
+                        x.to(self.device),
+                        torch.full((n,), timesteps[t]).to(self.device),
+                        low_res)
 
                 if mask is not None or label_dist is not None:
 
@@ -225,26 +233,30 @@ class Diffusion:
             else:
                 mask_pred = pred_x_0
 
-            if mask_pred.shape[1] == 1:
+            # if mask_pred.shape[1] == 1:
+            #     mask_pred = (mask_pred + 1) / 2
+            #     if self.num_classes == 2:
+            #         # mask_pred = torch.round(mask_pred)
+            #         mask_pred = mask_pred * 2 - 1
+            #     else:
+            #         mask_pred *= self.num_classes
+            #         mask_pred[
+            #             mask_pred == self.num_classes] = self.num_classes - 1
+            #         mask_pred = mask_pred.int()
+            #         mask_pred -= 1
+            #     # mask_pred += 1
+            #     # mask_pred = torch.round(mask_pred)
+            #     # mask_pred -= 1
+            #     # pass
 
-                mask_pred = (mask_pred + 1) / 2
-                mask_pred *= 3
-                mask_pred[mask_pred == 3] = 3 - 1
-                mask_pred = mask_pred.int()
-                mask_pred -= 1
-                # mask_pred += 1
-                # mask_pred = torch.round(mask_pred)
-                # mask_pred -= 1
-                # pass
+            # else:  # one hot encoding
 
-            else:  # one hot encoding
-
-                # mask_pred = torch.nn.functional.softmax(mask_pred, dim=1)
-                # mask_pred = torch.argmax(mask_pred, dim=1)
-                # mask_pred = torch.nn.functional.one_hot(mask_pred.long())
-                # mask_pred = torch.moveaxis(mask_pred, -1, 1).float()
-                # mask_pred = mask_pred * 2 - 1
-                pass
+            #     # mask_pred = torch.nn.functional.softmax(mask_pred, dim=1)
+            #     # mask_pred = torch.argmax(mask_pred, dim=1)
+            #     # mask_pred = torch.nn.functional.one_hot(mask_pred.long())
+            #     # mask_pred = torch.moveaxis(mask_pred, -1, 1).float()
+            #     # mask_pred = mask_pred * 2 - 1
+            #     pass
 
             if pred_type == "all":
                 pred_x_0[:, img_channels:] = mask_pred

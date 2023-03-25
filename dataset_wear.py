@@ -19,7 +19,6 @@ class WearDataset(Dataset):
         self.one_hot = mask_one_hot
         self.num_classes = num_classes
         self.label_dist = label_dist
-        self.label_dist_scaler_fitted = False
 
         self.files = [
             os.path.splitext(
@@ -46,17 +45,6 @@ class WearDataset(Dataset):
                 img_size, interpolation=transforms.InterpolationMode.NEAREST),
         ])
 
-        # if self.label_dist:
-        #     self.label_dist_scaler = MinMaxScaler()
-        #     self.fit_scaler()
-        #     self.label_dist_scaler_fitted = True
-
-    def fit_scaler(self):
-
-        for i in range(self.__len__()):
-
-            self.label_dist_scaler.partial_fit(self.__getitem__(i)["L"][None])
-
     def __len__(self):
 
         return len(self.inputs)
@@ -77,9 +65,6 @@ class WearDataset(Dataset):
                 [dict(counter)[cl + 1] for cl in range(self.num_classes - 1)],
                 dtype=float)
             label_dist /= label_dist.sum()
-            # if self.label_dist_scaler_fitted:
-            #     label_dist = self.label_dist_scaler.transform(
-            #         np.array(label_dist)[None])[0]
 
         if self.one_hot:
             trg = torch.nn.functional.one_hot(trg[0].long(),

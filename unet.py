@@ -280,7 +280,7 @@ class Attention(nn.Module):
     # ported from
     # ("https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/unet.py")"
 
-    def __init__(self, channels, num_heads=4, num_head_channels=32, groups=8):
+    def __init__(self, channels, num_heads=4, num_head_channels=64, groups=8):
 
         super().__init__()
         self.channels = channels
@@ -366,6 +366,23 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
+
+class SuperResUnet(Unet):
+
+    def __init__(self, dim, device, dim_mults=(1, 2, 4, 8), in_channels=3,
+                 out_channels=3, resnet_block_groups=32, num_resnet_blocks=2,
+                 attention_dims=(32, 16, 8), dropout=0, spade=False,
+                 num_classes=None):
+        super().__init__(dim, device, dim_mults, in_channels * 2, out_channels,
+                         resnet_block_groups, num_resnet_blocks,
+                         attention_dims, dropout, spade, num_classes)
+
+    def forward(self, x, t, low_res=None):
+
+        upsampled = torch.nn.functional.interpolate(
+            low_res, (x.shape[2], x.shape[3]), mode="nearest")
+        x = torch.cat((x, upsampled), dim=1)
+        return super().forward(x, t)
 
 # x = torch.empty((4, 3, 64, 64))
 

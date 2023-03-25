@@ -1,15 +1,29 @@
 # Data config
 
-train_dataset = "data/RT100U_processed"
+dataset = "grain"
 
-raw_img_size = (448, 576)
+grain_defaults = {
+    "root_dir": "data/grains_txt",
+    "channel_names": ["intensity", "depth"],
+    "image_idxs": ([7, 2, 5, 8, 6, 10, 1, 4], [9]),
+    "img_channels": 2,
+    "num_classes": 2,
+    "patch_size": 256
+}
+wear_defaults = {
+    "root_dir": "data/RT100U_processed",
+    "raw_img_size": (448, 576),
+    "img_channels": 3,
+    "num_classes": 3
+}
+
 img_size = (64, 64)
-img_channels = 3
 
 local = True
-use_wandb = False
+use_wandb = True
 
 checkpoint = None
+save_models = True
 
 # Model config
 
@@ -20,25 +34,27 @@ schedule = "linear"
 model_dim = 64
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
-dropout = 0.1
+dropout = 0.0
 drop_condition_rate = 0.2
 guidance_scale = 2.0
 
+# Data config
+
 mask_one_hot = False
 pred_type = "mask"  # "all, mask or image"
-condition = "label_dist"  # "None, label_dist or mask"
-num_classes = 3
+condition = "None"  # "None, label_dist or mask"
+super_res = False
 
 
 # Train config
 
-batch_size = 4
+batch_size = 64
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
-epochs = 1000
+epochs = 5000
 ema = False
-num_workers = 12
+num_workers = 32
 loss = "hybrid"
 
 
@@ -46,19 +62,21 @@ loss = "hybrid"
 
 evaluate_every = 1
 start_eval_epoch = 0
-sampling_steps = 200
+sampling_steps = 10
+round_masks = False
 
 random_seed = 1234
 
 if local:
     num_workers = 0
     batch_size = 2
+    save_models = False
 
 config = {
-    "train_dataset": train_dataset,
-    "raw_img_size": raw_img_size,
+    "dataset": dataset,
+    "grain_defaults": grain_defaults,
+    "wear_defaults": wear_defaults,
     "img_size": img_size,
-    "img_channels": img_channels,
     "batch_size": batch_size,
     "optimizer": optimizer,
     "loss": loss,
@@ -70,8 +88,10 @@ config = {
     "evaluate_every": evaluate_every,
     "start_eval_epoch": start_eval_epoch,
     "sampling_steps": sampling_steps,
+    "round_masks": round_masks,
     "use_wandb": use_wandb,
     "checkpoint": checkpoint,
+    "save_models": save_models,
     "beta_0": beta_0,
     "beta_t": beta_t,
     "timesteps": timesteps,
@@ -85,5 +105,5 @@ config = {
     "mask_one_hot": mask_one_hot,
     "pred_type": pred_type,
     "condition": condition,
-    "num_classes": num_classes,
+    "super_res": super_res,
 }
