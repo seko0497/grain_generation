@@ -128,22 +128,20 @@ class Validation():
 
         # sample
         if condition == "mask":
-            for batch in valid_loader:
-                sample_mask = batch["I"][:, img_channels:]
-                sample_masks.append(sample_mask)
-                sample_batch = diffusion.sample(
-                    model,
-                    sample_mask.shape[0],
-                    mask=sample_mask.to(
-                        device),
-                    label_dist=None,
-                    sampling_steps=sampling_steps,
-                    pred_type=pred_type,
-                    img_channels=img_channels,
-                    guidance_scale=guidance_scale)
-                samples.append(sample_batch)
-            sample_masks = torch.cat(sample_masks)
-            samples = torch.cat(samples)
+            batch = next(iter(valid_loader))
+            sample_mask = batch["I"][:, img_channels:]
+            sample_batch = diffusion.sample(
+                model,
+                sample_mask.shape[0],
+                mask=sample_mask.to(
+                    device),
+                label_dist=None,
+                sampling_steps=sampling_steps,
+                pred_type=pred_type,
+                img_channels=img_channels,
+                guidance_scale=guidance_scale)
+            sample_mask = torch.argmax(sample_mask, dim=1, keepdim=True)
+            samples = torch.cat((sample_batch.cpu(), sample_mask), dim=1)
 
         elif super_res:
 
@@ -188,7 +186,7 @@ class Validation():
             samples = torch.cat(samples)
 
         # split images and masks
-        if pred_type == "all":
+        if pred_type == "all" or condition == "mask":
             sample_dict["masks"] = samples[:, img_channels:]
             sample_dict["images"] = samples[:, :img_channels]
         elif pred_type == "mask":

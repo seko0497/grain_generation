@@ -17,9 +17,9 @@ wear_defaults = {
     "num_classes": 3
 }
 
-img_size = (64, 64)
+img_size = (256, 256)
 
-local = True
+local = False
 use_wandb = True
 
 checkpoint = None
@@ -31,7 +31,7 @@ beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
 schedule = "linear"
-model_dim = 64
+model_dim = 256
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 dropout = 0.0
@@ -40,19 +40,19 @@ guidance_scale = 2.0
 
 # Data config
 
-mask_one_hot = False
-pred_type = "mask"  # "all, mask or image"
-condition = "None"  # "None, label_dist or mask"
+mask_one_hot = True
+pred_type = "image"  # "all, mask or image"
+condition = "mask"  # "None, label_dist or mask"
 super_res = False
 
 
 # Train config
 
-batch_size = 64
+batch_size = 12
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
-epochs = 5000
+epochs = 3000
 ema = False
 num_workers = 32
 loss = "hybrid"
@@ -60,9 +60,9 @@ loss = "hybrid"
 
 # Eval config
 
-evaluate_every = 1
+evaluate_every = 50
 start_eval_epoch = 0
-sampling_steps = 10
+sampling_steps = 200
 round_masks = False
 
 random_seed = 1234

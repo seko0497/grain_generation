@@ -14,13 +14,17 @@ import einops
 class GrainDataset(Dataset):
 
     def __init__(self, root_dir, channel_names, image_idxs,
-                 patch_size, img_size, num=10, train=True):
+                 patch_size, img_size, mask_one_hot=False,
+                 num_classes=2, num=500, train=True):
 
         self.num = num
         self.train = train
         self.image_idxs = image_idxs
         self.patch_size = patch_size
         self.image_size = img_size
+        self.channel_names = channel_names
+        self.mask_one_hot = mask_one_hot
+        self.num_classes = num_classes
 
         self.crop_scale = transforms.Compose([
             transforms.RandomCrop(patch_size),
@@ -42,12 +46,29 @@ class GrainDataset(Dataset):
             ))
             for i in image_idxs]
 
+        if not train:
+            image = self.images[0]
+            image = image[
+                :,
+                :image.shape[1] // self.image_size[0] * self.image_size[0],
+                :image.shape[2] // self.image_size[0] * self.image_size[0]]
+
+            p1 = image.shape[1] // self.image_size[0]
+            p2 = image.shape[2] // self.image_size[0]
+
+            image = einops.rearrange(
+                    image,
+                    "c (p1 h) (p2 w) -> (p1 p2) c h w",
+                    p1=p1,
+                    p2=p2)
+            self.images = image
+
     def __len__(self):
 
         if self.train:
             return self.num
         else:
-            return len(self.image_idxs)
+            return len(self.images)
 
     def __getitem__(self, index):
 
@@ -63,62 +84,33 @@ class GrainDataset(Dataset):
         else:
 
             image = self.images[index]
-            image = image[
-                :,
-                :image.shape[1] // self.image_size[0] * self.image_size[0],
-                :image.shape[2] // self.image_size[0] * self.image_size[0]]
-
-            p1 = image.shape[1] // self.image_size[0]
-            p2 = image.shape[2] // self.image_size[0]
-
-            image = einops.rearrange(
-                    image,
-                    "c (p1 h) (p2 w) -> (p1 p2) c h w",
-                    p1=p1,
-                    p2=p2
-                )
             image = image * 2 - 1
+
+        if self.mask_one_hot:
+            inp = image[:len(self.channel_names)]
+            trg = image[len(self.channel_names):]
+            trg = (trg + 1) / 2
+            trg = torch.nn.functional.one_hot(trg[0].long(),
+                                              self.num_classes)
+            trg = trg * 2 - 1
+            trg = torch.moveaxis(trg, -1, 0)
+            image = torch.cat((inp, trg))
 
         return {"I": image}
 
 
 # # DEBUG
-# grain_dataset = GrainDataset("data/grains_txt", (64, 64), [1, 4, 5], num=4,
-#                              train=True)
+# grain_dataset = GrainDataset(
+#     "data/grains_txt", channel_names=["intensity", "depth"], image_idxs=[9],
+#     patch_size=256, img_size=(256, 256), mask_one_hot=True, train=False)
+
+
 # grain_dataloader = DataLoader(grain_dataset, batch_size=1)
 
-# for batch in grain_dataloader:
-#     # pass
-#     # print(batch["I"].shape)
-#     # print(torch.unique(batch["I"][0][0]))
-#     __, ax = plt.subplots(4, 3)
+# for i, batch in enumerate(grain_dataloader):
 
-#     high_res = batch["I"]
-#     batch_area = torch.nn.functional.interpolate(
-#                 batch["I"], (64, 64), mode="area")
-#     batch_area[:, -1] = torch.round(batch_area[:, -1])
-#     batch_bilinear = torch.nn.functional.interpolate(
-#                 batch["I"], (64, 64), mode="bilinear")
-#     batch_nearest = torch.nn.functional.interpolate(
-#                 batch["I"], (64, 64), mode="nearest")
-#     # batch = torch.nn.functional.interpolate(
-#     #             batch, (256, 256), mode="nearest")
-
-#     ax[0, 0].imshow(batch_area[0][0], cmap="viridis", vmin=-1, vmax=1)
-#     ax[0, 1].imshow(batch_area[0][1], cmap="viridis", vmin=-1, vmax=1)
-#     ax[0, 2].imshow(batch_area[0][2], cmap="viridis", vmin=-1, vmax=1)
-#     ax[1, 0].imshow(batch_bilinear[0][0], cmap="viridis", vmin=-1, vmax=1)
-#     ax[1, 1].imshow(batch_bilinear[0][1], cmap="viridis", vmin=-1, vmax=1)
-#     ax[1, 2].imshow(batch_bilinear[0][2], cmap="viridis", vmin=-1, vmax=1)
-#     ax[2, 0].imshow(batch_nearest[0][0], cmap="viridis", vmin=-1, vmax=1)
-#     ax[2, 1].imshow(batch_nearest[0][1], cmap="viridis", vmin=-1, vmax=1)
-#     ax[2, 2].imshow(batch_nearest[0][2], cmap="viridis", vmin=-1, vmax=1)
-#     ax[3, 0].imshow(high_res[0][0], cmap="viridis", vmin=-1, vmax=1)
-#     ax[3, 1].imshow(high_res[0][1], cmap="viridis", vmin=-1, vmax=1)
-#     ax[3, 2].imshow(high_res[0][2], cmap="viridis", vmin=-1, vmax=1)
+#     fig, axes = plt.subplots(1, 3)
+#     axes[0].imshow(batch["I"][0, 0], vmax=1, vmin=-1)
+#     axes[1].imshow(batch["I"][0, 1], vmax=1, vmin=-1)
+#     axes[2].imshow(batch["I"][0, 2], vmax=1, vmin=-1)
 #     plt.show()
-
-    # ax[0].imshow(batch["I"][0][0], cmap="viridis", vmin=-1, vmax=1)
-    # ax[1].imshow(batch["I"][0][1], cmap="viridis", vmin=-1, vmax=1)
-    # ax[2].imshow(batch["I"][0][2], cmap="viridis", vmin=-1, vmax=1)
-    # plt.show()

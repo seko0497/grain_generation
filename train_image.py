@@ -44,7 +44,8 @@ def main():
             config.get("grain_defaults")["channel_names"],
             config.get("grain_defaults")["image_idxs"][0],
             config.get("grain_defaults")["patch_size"],
-            config.get("img_size"))
+            config.get("img_size"),
+            mask_one_hot=config.get("mask_one_hot"),)
     elif config.get("dataset") == "wear":
         dataset_train = WearDataset(
             f"{config.get('wear_defaults')['root_dir']}/train",
@@ -61,6 +62,7 @@ def main():
             config.get("grain_defaults")["image_idxs"][1],
             config.get("grain_defaults")["patch_size"],
             config.get("img_size"),
+            mask_one_hot=config.get("mask_one_hot"),
             train=False)
     elif config.get("dataset") == "wear":
         dataset_validation = WearDataset(
@@ -309,10 +311,7 @@ def main():
             # log samples and scores in weights and biases
             if config.get("use_wandb"):
 
-                if config.get("condition") != "mask":
-                    num_samples_log = 1
-                else:
-                    num_samples_log = samples.shape[0]
+                num_samples_log = 4
 
                 # log samples
                 for i in range(num_samples_log):
