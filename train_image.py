@@ -247,7 +247,9 @@ def main():
                 device,
                 config.get("super_res"),
                 valid_loader,
-                guidance_scale=config.get("guidance_scale"))
+                guidance_scale=config.get("guidance_scale"),
+                pred_noise=config.get("pred_noise"),
+                clamp=config.get("clamp"))
 
             # process masks
             if "masks" in samples:

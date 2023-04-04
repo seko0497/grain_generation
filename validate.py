@@ -119,8 +119,8 @@ class Validation():
 
     def generate_samples(self, condition, pred_type, img_channels, num_classes,
                          diffusion, sampling_steps, batch_size, model, device,
-                         super_res=False, valid_loader=None,
-                         guidance_scale=0.2):
+                         super_res=False, valid_loader=None, clamp=True,
+                         pred_noise=True, guidance_scale=0.2):
 
         sample_dict = {}
         samples = []
@@ -139,7 +139,9 @@ class Validation():
                 sampling_steps=sampling_steps,
                 pred_type=pred_type,
                 img_channels=img_channels,
-                guidance_scale=guidance_scale)
+                guidance_scale=guidance_scale,
+                pred_noise=pred_noise,
+                clamp=clamp)
             sample_mask = torch.argmax(sample_mask, dim=1, keepdim=True)
             samples = torch.cat((sample_batch.cpu(), sample_mask), dim=1)
 
@@ -159,7 +161,9 @@ class Validation():
                     sampling_steps=sampling_steps,
                     pred_type=pred_type,
                     img_channels=img_channels,
-                    guidance_scale=guidance_scale)
+                    guidance_scale=guidance_scale,
+                    pred_noise=pred_noise,
+                    clamp=clamp)
             samples = sample_batch
             low_res_images = torch.cat(low_res_images)
 
@@ -182,7 +186,9 @@ class Validation():
                 sampling_steps=sampling_steps,
                 pred_type=pred_type,
                 img_channels=img_channels,
-                guidance_scale=guidance_scale))
+                guidance_scale=guidance_scale,
+                pred_noise=pred_noise,
+                clamp=clamp))
             samples = torch.cat(samples)
 
         # split images and masks

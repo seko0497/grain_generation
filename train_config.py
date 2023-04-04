@@ -37,6 +37,8 @@ num_resnet_blocks = 2
 dropout = 0.0
 drop_condition_rate = 0.2
 guidance_scale = 2.0
+clamp = False
+pred_noise = False
 
 # Data config
 
@@ -52,7 +54,7 @@ batch_size = 12
 optimizer = "Adam"
 loss = "MSELoss"
 learning_rate = 0.00001
-epochs = 3000
+epochs = 1000
 ema = False
 num_workers = 32
 loss = "hybrid"
@@ -105,5 +107,7 @@ config = {
     "mask_one_hot": mask_one_hot,
     "pred_type": pred_type,
     "condition": condition,
+    "clamp": clamp,
+    "pred_noise": pred_noise,
     "super_res": super_res,
 }

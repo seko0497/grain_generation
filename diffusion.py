@@ -70,7 +70,7 @@ class Diffusion:
 
     def sample(self, model, n, mask=None, label_dist=None, low_res=None,
                sampling_steps=None, guidance_scale=0.2, pred_type="all",
-               img_channels=3):
+               img_channels=3, pred_noise=True, clamp=True):
 
         model.eval()
         with torch.no_grad():
@@ -139,7 +139,10 @@ class Diffusion:
                         model_mean, model_var, x,
                         torch.full((n,), t),
                         learned_var=True,
-                        pred_type=pred_type, img_channels=img_channels)
+                        pred_type=pred_type,
+                        img_channels=img_channels,
+                        pred_noise=pred_noise,
+                        clamp=clamp)
 
                 else:
 
@@ -150,7 +153,8 @@ class Diffusion:
 
                     model_mean, model_var = self.p(
                         model_mean, model_var, x, torch.full((n,), t),
-                        pred_type=pred_type, img_channels=img_channels)
+                        pred_type=pred_type, img_channels=img_channels,
+                        pred_noise=pred_noise, clamp=clamp)
 
                 if t == 0:
 
@@ -162,7 +166,9 @@ class Diffusion:
                     x = (model_mean + torch.sqrt(model_var) * noise)
 
             model.train()
-            x = (x.clamp(-1, 1) + 1) / 2
+            if clamp:
+                x = x.clamp(-1, 1)
+            x = (x + 1) / 2
 
             # reset old betas after sampling
             self.calculate_alphas(original_betas)
@@ -203,7 +209,7 @@ class Diffusion:
         return self.mean(x_t, x_0, t), posterior_log_variance_clipped_t
 
     def p(self, model_mean, model_var, x_t, t, learned_var=False,
-          pred_type="all", img_channels=3):
+          pred_noise=True, clamp=True):
 
         if learned_var:
             # Equation 15 improved ddpm
@@ -223,45 +229,14 @@ class Diffusion:
             self.sqrt_recipm1_alphas_cumprod, t, x_t.shape
         )
 
-        pred_x_0 = (sqrt_recip_alphas_cumprod_t * x_t
-                    - sqrt_recipm1_alphas_cumprod_t * model_mean)
-        pred_x_0 = pred_x_0.clamp(-1, 1)
+        if pred_noise:
+            pred_x_0 = (sqrt_recip_alphas_cumprod_t * x_t
+                        - sqrt_recipm1_alphas_cumprod_t * model_mean)
+        else:
+            pred_x_0 = model_mean
 
-        if pred_type == "all" or pred_type == "mask":
-            if pred_type == "all":
-                mask_pred = pred_x_0[:, img_channels:]
-            else:
-                mask_pred = pred_x_0
-
-            # if mask_pred.shape[1] == 1:
-            #     mask_pred = (mask_pred + 1) / 2
-            #     if self.num_classes == 2:
-            #         # mask_pred = torch.round(mask_pred)
-            #         mask_pred = mask_pred * 2 - 1
-            #     else:
-            #         mask_pred *= self.num_classes
-            #         mask_pred[
-            #             mask_pred == self.num_classes] = self.num_classes - 1
-            #         mask_pred = mask_pred.int()
-            #         mask_pred -= 1
-            #     # mask_pred += 1
-            #     # mask_pred = torch.round(mask_pred)
-            #     # mask_pred -= 1
-            #     # pass
-
-            # else:  # one hot encoding
-
-            #     # mask_pred = torch.nn.functional.softmax(mask_pred, dim=1)
-            #     # mask_pred = torch.argmax(mask_pred, dim=1)
-            #     # mask_pred = torch.nn.functional.one_hot(mask_pred.long())
-            #     # mask_pred = torch.moveaxis(mask_pred, -1, 1).float()
-            #     # mask_pred = mask_pred * 2 - 1
-            #     pass
-
-            if pred_type == "all":
-                pred_x_0[:, img_channels:] = mask_pred
-            else:
-                pred_x_0 = mask_pred
+        if clamp:
+            pred_x_0 = pred_x_0.clamp(-1, 1)
 
         # get q_posterior mean of predicted x_0
         model_mean, __ = self.q_posterior(x_t, pred_x_0, t)
