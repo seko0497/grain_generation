@@ -193,7 +193,7 @@ def main():
     if config.get("loss") == "simple":
         loss = torch.nn.MSELoss()
     elif config.get("loss") == "hybrid":
-        loss = HybridLoss()
+        loss = HybridLoss(pred_noise=config.get("pred_noise"))
 
     # log model parameters
     if config.get("use_wandb"):

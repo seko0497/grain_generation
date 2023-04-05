@@ -62,7 +62,7 @@ loss = "hybrid"
 
 # Eval config
 
-evaluate_every = 50
+evaluate_every = 10
 start_eval_epoch = 0
 sampling_steps = 200
 round_masks = False

@@ -44,11 +44,12 @@ def discretized_gaussian_log_likelihood(x, *, means, log_scales):
 
 class HybridLoss(torch.nn.Module):
 
-    def __init__(self, lam=0.001) -> None:
+    def __init__(self, lam=0.001, pred_noise=True) -> None:
         super().__init__()
 
         self.mse = torch.nn.MSELoss()
         self.lam = lam
+        self.pred_noise = pred_noise
 
     def vlb_loss(self, true_mean, true_var, out_mean, out_var, x_0, t):
 
@@ -68,7 +69,8 @@ class HybridLoss(torch.nn.Module):
     def forward(self, noise, noise_pred, x_0, t, true_mean, true_var, out_mean,
                 out_var,):
 
-        loss_simple = self.mse(noise_pred, noise)
+        target = noise if self.pred_noise else x_0
+        loss_simple = self.mse(noise_pred, target)
         loss_vlb = self.vlb_loss(
             true_mean, true_var, out_mean.detach(), out_var, x_0, t
         )
