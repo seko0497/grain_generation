@@ -3,6 +3,7 @@ from tqdm import tqdm
 import torch
 
 from diffusion import Diffusion
+from image_transforms import down_upsample
 
 
 def train(
@@ -52,8 +53,10 @@ def train(
             output = model(noisy_image, t.to(device), mask=mask,
                            label_dist=label_dist)
         else:
-            low_res = torch.nn.functional.interpolate(
-                x_0, (64, 64), mode="nearest")
+
+            # downsampling
+            low_res = down_upsample(x_0, img_channels)
+
             output = model(noisy_image, t.to(device), low_res=low_res)
 
         # Backward pass
@@ -65,8 +68,7 @@ def train(
 
             out_mean, out_var = diffusion.p(
                 output[:, :x_0.shape[1]], output[:, x_0.shape[1]:],
-                noisy_image, t, learned_var=True, pred_type=pred_type,
-                img_channels=img_channels)
+                noisy_image, t, learned_var=True)
 
             loss = loss_fn(
                 noise, output[:, :x_0.shape[1]], x_0, t.to(device), true_mean,

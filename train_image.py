@@ -22,7 +22,7 @@ def main():
     # initialize weights and biases logging
     if config_dict["use_wandb"]:
         wandb.init(
-            config=config_dict, entity="vm-ml", project="grain_generation")
+            config=config_dict, entity="seko97", project="grain_generation")
     config = Config(config=config_dict, wandb=config_dict["use_wandb"])
 
     if config.get("use_wandb"):
@@ -186,8 +186,7 @@ def main():
     # initialize optimizer
     optimizer = getattr(torch.optim, config.get("optimizer"))(
         model.parameters(),
-        lr=config.get("learning_rate"),
-        betas=[0.0, 0.999])
+        lr=config.get("learning_rate"))
     if checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     if config.get("loss") == "simple":
@@ -245,8 +244,9 @@ def main():
                 config.get("batch_size"),
                 eval_model,
                 device,
-                config.get("super_res"),
-                valid_loader,
+                super_res=config.get("super_res"),
+                valid_loader=valid_loader,
+                num_samples=config.get("num_samples"),
                 guidance_scale=config.get("guidance_scale"),
                 pred_noise=config.get("pred_noise"),
                 clamp=config.get("clamp"))
@@ -311,55 +311,54 @@ def main():
                         wandb.save("wear_generation/best.pth")
 
             # log samples and scores in weights and biases
-            if config.get("use_wandb"):
+                if config.get("use_wandb"):
 
-                num_samples_log = 4
+                    num_samples_log = 4
 
-                # log samples
-                for i in range(num_samples_log):
-                    if "images" in samples:
-                        if config.get("dataset") == "grain":
-                            sample_intensity = get_rgb(samples["images"][i, 0])
-                            sample_depth = get_rgb(samples["images"][i, 1])
-                            sample_image = np.vstack(
-                                (sample_intensity, sample_depth))
-                        elif config.get("dataset") == "wear":
-                            sample_image = (samples["images"]
-                                            .cpu().detach().numpy())
-                            np.moveaxis(sample_image, 0, -1)
-                    if "masks" in samples:
-                        sample_mask = get_rgb(sample_masks[i, 0])
+                    # log samples
+                    for i in range(num_samples_log):
+                        if "images" in samples:
+                            if config.get("dataset") == "grain":
+                                sample_intensity = get_rgb(
+                                    samples["images"][i, 0])
+                                sample_depth = get_rgb(samples["images"][i, 1])
+                                sample_image = np.vstack(
+                                    (sample_intensity, sample_depth))
+                            elif config.get("dataset") == "wear":
+                                sample_image = (samples["images"]
+                                                .cpu().detach().numpy())
+                                np.moveaxis(sample_image, 0, -1)
+                        if "masks" in samples:
+                            sample_mask = get_rgb(sample_masks[i, 0])
 
-                    if "images" in samples and "masks" in samples:
-                        sample = np.vstack((sample_image, sample_mask))
-                    elif "images" not in samples:
-                        sample = sample_mask
-                    elif "masks" not in samples:
-                        sample = sample_image
+                        if "images" in samples and "masks" in samples:
+                            sample = np.vstack((sample_image, sample_mask))
+                        elif "images" not in samples:
+                            sample = sample_mask
+                        elif "masks" not in samples:
+                            sample = sample_image
 
-                    if "low_res" in samples:
-                        low_res = torch.nn.functional.interpolate(
-                            low_res, (sample.shape[1], sample.shape[1]),
-                            mode="nearest")
-                        low_res_cmap = []
-                        for low_res_channel in low_res[i]:
-                            cmap = cm.get_cmap("viridis")
-                            low_res_channel = cmap(low_res_channel)[:, :, :3]
-                            low_res_cmap.append(low_res_channel)
-                        low_res_cmap = np.vstack(low_res_cmap)
-                        sample = np.hstack((low_res_cmap, sample))
+                        if "low_res" in samples:
+                            low_res = samples["low_res"]
+                            low_res = (low_res + 1) / 2
+                            low_res_cmap = []
+                            for low_res_channel in low_res[i]:
+                                low_res_channel = get_rgb(low_res_channel)
+                                low_res_cmap.append(low_res_channel)
+                            low_res_cmap = np.vstack(low_res_cmap)
+                            sample = np.hstack((low_res_cmap, sample))
 
-                    wandb.log({f"Sample_{i}": wandb.Image(sample)},
-                              step=epoch, commit=False)
-                # log scores
-                fid_log = {"mean_fid": mean_current_fid,
-                           "best_epoch": best["epoch"],
-                           "best_fid": best["fid"]}
+                        wandb.log({f"Sample_{i}": wandb.Image(sample)},
+                                  step=epoch, commit=False)
+            # log scores
+            fid_log = {"mean_fid": mean_current_fid,
+                       "best_epoch": best["epoch"],
+                       "best_fid": best["fid"]}
 
-                for key in current_fid.keys():
-                    fid_log[f"fid_{key}"] = current_fid[key]
+            for key in current_fid.keys():
+                fid_log[f"fid_{key}"] = current_fid[key]
 
-                wandb.log(fid_log, step=epoch, commit=False)
+            wandb.log(fid_log, step=epoch, commit=False)
 
         if config.get("use_wandb"):
             wandb.log({"train_loss": epoch_loss}, step=epoch)

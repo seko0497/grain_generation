@@ -1,4 +1,5 @@
 from collections import Counter
+import math
 from matplotlib import cm
 import numpy as np
 import torch
@@ -6,7 +7,7 @@ from torchmetrics.image.fid import FrechetInceptionDistance
 from tqdm import tqdm
 
 from losses import HybridLoss
-from image_transforms import get_rgb
+from image_transforms import get_rgb, down_upsample
 
 
 class Validation():
@@ -117,8 +118,10 @@ class Validation():
 
         return fid
 
-    def generate_samples(self, condition, pred_type, img_channels, num_classes,
+    def generate_samples(self, condition, pred_type, img_channels,
+                         num_classes,
                          diffusion, sampling_steps, batch_size, model, device,
+                         num_samples=1,
                          super_res=False, valid_loader=None, clamp=True,
                          pred_noise=True, guidance_scale=0.2):
 
@@ -137,8 +140,6 @@ class Validation():
                     device),
                 label_dist=None,
                 sampling_steps=sampling_steps,
-                pred_type=pred_type,
-                img_channels=img_channels,
                 guidance_scale=guidance_scale,
                 pred_noise=pred_noise,
                 clamp=clamp)
@@ -147,24 +148,32 @@ class Validation():
 
         elif super_res:
 
+            generated = 0
+            low_res_images = []
+
             for batch in valid_loader:
-                batch = batch["I"][0, :batch_size]
-                low_res = torch.nn.functional.interpolate(
-                    batch, (64, 64), mode="nearest")
+
+                if num_samples - generated < batch_size:
+                    n = num_samples - generated
+                else:
+                    n = batch_size
+
+                low_res = down_upsample(batch["I"][:n], img_channels)
                 low_res_images.append(low_res)
-                sample_batch = diffusion.sample(
+                sample_batch = samples.append(diffusion.sample(
                     model,
-                    batch.shape[0],
+                    n,
                     mask=None,
                     label_dist=None,
                     low_res=low_res.to(device),
                     sampling_steps=sampling_steps,
-                    pred_type=pred_type,
-                    img_channels=img_channels,
                     guidance_scale=guidance_scale,
                     pred_noise=pred_noise,
-                    clamp=clamp)
-            samples = sample_batch
+                    clamp=clamp))
+                generated += n
+                if generated == num_samples:
+                    break
+            samples = torch.cat(samples)
             low_res_images = torch.cat(low_res_images)
 
         else:
@@ -178,17 +187,24 @@ class Validation():
             else:
                 label_dist = None
 
-            samples.append(diffusion.sample(
-                model,
-                batch_size,
-                mask=None,
-                label_dist=label_dist,
-                sampling_steps=sampling_steps,
-                pred_type=pred_type,
-                img_channels=img_channels,
-                guidance_scale=guidance_scale,
-                pred_noise=pred_noise,
-                clamp=clamp))
+            generated = 0
+            for _ in range(math.ceil(num_samples / batch_size)):
+
+                if num_samples - generated < batch_size:
+                    n = num_samples - generated
+                else:
+                    n = batch_size
+
+                samples.append(diffusion.sample(
+                    model,
+                    n,
+                    mask=None,
+                    label_dist=label_dist,
+                    sampling_steps=sampling_steps,
+                    guidance_scale=guidance_scale,
+                    pred_noise=pred_noise,
+                    clamp=clamp))
+                generated += n
             samples = torch.cat(samples)
 
         # split images and masks
@@ -197,6 +213,8 @@ class Validation():
             sample_dict["images"] = samples[:, :img_channels]
         elif pred_type == "mask":
             sample_dict["masks"] = samples
+        if super_res:
+            sample_dict["low_res"] = low_res_images
 
         return sample_dict
 

@@ -69,8 +69,8 @@ class Diffusion:
                 sqrt_one_minus_alphas_cumprod_t * noise), noise
 
     def sample(self, model, n, mask=None, label_dist=None, low_res=None,
-               sampling_steps=None, guidance_scale=0.2, pred_type="all",
-               img_channels=3, pred_noise=True, clamp=True):
+               sampling_steps=None, guidance_scale=0.2, pred_noise=True,
+               clamp=True):
 
         model.eval()
         with torch.no_grad():
@@ -139,8 +139,6 @@ class Diffusion:
                         model_mean, model_var, x,
                         torch.full((n,), t),
                         learned_var=True,
-                        pred_type=pred_type,
-                        img_channels=img_channels,
                         pred_noise=pred_noise,
                         clamp=clamp)
 
@@ -153,7 +151,6 @@ class Diffusion:
 
                     model_mean, model_var = self.p(
                         model_mean, model_var, x, torch.full((n,), t),
-                        pred_type=pred_type, img_channels=img_channels,
                         pred_noise=pred_noise, clamp=clamp)
 
                 if t == 0:

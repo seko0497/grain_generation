@@ -31,29 +31,29 @@ beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
 schedule = "linear"
-model_dim = 256
+model_dim = 192
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 dropout = 0.0
 drop_condition_rate = 0.2
 guidance_scale = 2.0
-clamp = False
-pred_noise = False
+clamp = True
+pred_noise = True
 
 # Data config
 
-mask_one_hot = True
-pred_type = "image"  # "all, mask or image"
-condition = "mask"  # "None, label_dist or mask"
-super_res = False
+mask_one_hot = False
+pred_type = "all"  # "all, mask or image"
+condition = "None"  # "None, label_dist or mask"
+super_res = True
 
 
 # Train config
 
 batch_size = 12
-optimizer = "Adam"
+optimizer = "AdamW"
 loss = "MSELoss"
-learning_rate = 0.00001
+learning_rate = 0.0001
 epochs = 1000
 ema = False
 num_workers = 32
@@ -62,9 +62,10 @@ loss = "hybrid"
 
 # Eval config
 
-evaluate_every = 10
-start_eval_epoch = 0
+evaluate_every = 5
+start_eval_epoch = 100
 sampling_steps = 200
+num_samples = 16
 round_masks = False
 
 random_seed = 1234
@@ -90,6 +91,7 @@ config = {
     "evaluate_every": evaluate_every,
     "start_eval_epoch": start_eval_epoch,
     "sampling_steps": sampling_steps,
+    "num_samples": num_samples,
     "round_masks": round_masks,
     "use_wandb": use_wandb,
     "checkpoint": checkpoint,
