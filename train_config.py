@@ -17,7 +17,7 @@ wear_defaults = {
     "num_classes": 3
 }
 
-img_size = (256, 256)
+img_size = (64, 64)
 
 local = False
 use_wandb = True
@@ -30,10 +30,10 @@ save_models = True
 beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
-schedule = "linear"
+schedule = "cosine"
 model_dim = 192
 dim_mults = (1, 1, 2, 2, 4, 4)
-num_resnet_blocks = 2
+num_resnet_blocks = 3
 dropout = 0.0
 drop_condition_rate = 0.2
 guidance_scale = 2.0
@@ -45,15 +45,15 @@ pred_noise = True
 mask_one_hot = False
 pred_type = "all"  # "all, mask or image"
 condition = "None"  # "None, label_dist or mask"
-super_res = True
+super_res = False
 
 
 # Train config
 
-batch_size = 12
+batch_size = 64
 optimizer = "AdamW"
 loss = "MSELoss"
-learning_rate = 0.0001
+learning_rate = 0.0003
 epochs = 1000
 ema = False
 num_workers = 32
@@ -63,9 +63,9 @@ loss = "hybrid"
 # Eval config
 
 evaluate_every = 5
-start_eval_epoch = 100
+start_eval_epoch = 150
 sampling_steps = 200
-num_samples = 16
+num_samples = 100
 round_masks = False
 
 random_seed = 1234
