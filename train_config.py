@@ -1,6 +1,6 @@
 # Data config
 
-dataset = "grain"
+dataset = "wear"
 
 grain_defaults = {
     "root_dir": "data/grains_txt",
@@ -17,7 +17,7 @@ wear_defaults = {
     "num_classes": 3
 }
 
-img_size = (64, 64)
+img_size = (256, 256)
 
 local = False
 use_wandb = True
@@ -30,30 +30,30 @@ save_models = True
 beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
-schedule = "cosine"
-model_dim = 192
+schedule = "linear"
+model_dim = 64
 dim_mults = (1, 1, 2, 2, 4, 4)
-num_resnet_blocks = 3
-dropout = 0.0
+num_resnet_blocks = 2
+dropout = 0.1
 drop_condition_rate = 0.2
 guidance_scale = 2.0
 clamp = True
 pred_noise = True
+round_pred_x_0 = True
 
 # Data config
 
 mask_one_hot = False
-pred_type = "all"  # "all, mask or image"
+pred_type = "mask"  # "all, mask or image"
 condition = "None"  # "None, label_dist or mask"
 super_res = False
 
 
 # Train config
 
-batch_size = 64
-optimizer = "AdamW"
-loss = "MSELoss"
-learning_rate = 0.0003
+batch_size = 16
+optimizer = "Adam"
+learning_rate = 0.0001
 epochs = 1000
 ema = False
 num_workers = 32
@@ -62,10 +62,10 @@ loss = "hybrid"
 
 # Eval config
 
-evaluate_every = 5
-start_eval_epoch = 150
+evaluate_every = 50
+start_eval_epoch = 0
 sampling_steps = 200
-num_samples = 100
+num_samples = 4
 round_masks = False
 
 random_seed = 1234
@@ -111,5 +111,6 @@ config = {
     "condition": condition,
     "clamp": clamp,
     "pred_noise": pred_noise,
+    "round_pred_x_0": round_pred_x_0,
     "super_res": super_res,
 }

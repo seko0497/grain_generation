@@ -67,7 +67,7 @@ class HybridLoss(torch.nn.Module):
         return loss
 
     def forward(self, noise, noise_pred, x_0, t, true_mean, true_var, out_mean,
-                out_var,):
+                out_var):
 
         target = noise if self.pred_noise else x_0
         loss_simple = self.mse(noise_pred, target)

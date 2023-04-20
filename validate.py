@@ -123,7 +123,8 @@ class Validation():
                          diffusion, sampling_steps, batch_size, model, device,
                          num_samples=1,
                          super_res=False, valid_loader=None, clamp=True,
-                         pred_noise=True, guidance_scale=0.2):
+                         pred_noise=True, guidance_scale=0.2,
+                         round_pred_x_0=False):
 
         sample_dict = {}
         samples = []
@@ -142,7 +143,8 @@ class Validation():
                 sampling_steps=sampling_steps,
                 guidance_scale=guidance_scale,
                 pred_noise=pred_noise,
-                clamp=clamp)
+                clamp=clamp,
+                round_pred_x_0=round_pred_x_0)
             sample_mask = torch.argmax(sample_mask, dim=1, keepdim=True)
             samples = torch.cat((sample_batch.cpu(), sample_mask), dim=1)
 
@@ -169,7 +171,8 @@ class Validation():
                     sampling_steps=sampling_steps,
                     guidance_scale=guidance_scale,
                     pred_noise=pred_noise,
-                    clamp=clamp))
+                    clamp=clamp,
+                    round_pred_x_0=round_pred_x_0))
                 generated += n
                 if generated == num_samples:
                     break
@@ -179,8 +182,9 @@ class Validation():
         else:
 
             if condition == "label_dist":
-                label_dist = torch.rand(
-                    batch_size, num_classes - 1).to(device)
+                label_dist = torch.zeros((batch_size, num_classes)).to(device)
+                indices = torch.randint(num_classes, size=(batch_size,))
+                label_dist[torch.arange(batch_size), indices] = 1
                 label_dists.append(label_dist)
                 label_dists = torch.cat(label_dists)
                 sample_dict["label_dists"] = label_dists
@@ -203,7 +207,8 @@ class Validation():
                     sampling_steps=sampling_steps,
                     guidance_scale=guidance_scale,
                     pred_noise=pred_noise,
-                    clamp=clamp))
+                    clamp=clamp,
+                    round_pred_x_0=round_pred_x_0))
                 generated += n
             samples = torch.cat(samples)
 
@@ -218,20 +223,24 @@ class Validation():
 
         return sample_dict
 
-    def label_dist_rmse(self, pred_masks, label_dists, scaler):
+    def label_error(self, pred_masks, label_dists):
 
         num_classes = label_dists.shape[1]
         pred_label_dists = []
         for mask in pred_masks:
 
-            counter = Counter({cl: 0 for cl in range(num_classes)})
-            counter.update(np.array(mask.cpu().detach()).flatten())
-            label_dist = np.array(
-                [dict(counter)[cl] for cl in range(num_classes)],
-                dtype=float)
-            label_dist /= label_dist.sum()
-            label_dist = scaler.transform(label_dist[None])[0]
-            pred_label_dists.append(torch.Tensor(label_dist))
+            pred_label_dist = torch.zeros((num_classes,))
+            if mask.shape[0] == num_classes:
+                mask = torch.argmax(mask, dim=0)
+            mask *= num_classes
+            mask[mask == num_classes] = num_classes - 1
+            mask = mask.int()
+            if torch.unique(mask).shape[0] == num_classes:
+                pred_label_dist[-1] = 1.0
+            elif torch.unique(mask).shape[0] > 1:
+                pred_label_dist[torch.unique(mask).int()[-1].item() - 1] = 1.0
+
+            pred_label_dists.append(pred_label_dist)
         pred_label_dists = torch.stack(pred_label_dists)
 
         return torch.sqrt(

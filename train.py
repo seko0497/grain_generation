@@ -9,7 +9,7 @@ from image_transforms import down_upsample
 def train(
     model, diffusion: Diffusion, timesteps, device, data_loader, optimizer,
         epoch, loss_fn, ema=None, pred_type="all", condition="None",
-        super_res=False, img_channels=3, drop_rate=0.2):
+        super_res=False, img_channels=3, drop_rate=0.2, round_pred_x_0=False):
 
     model.train()
     epoch_loss = 0
@@ -68,7 +68,8 @@ def train(
 
             out_mean, out_var = diffusion.p(
                 output[:, :x_0.shape[1]], output[:, x_0.shape[1]:],
-                noisy_image, t, learned_var=True)
+                noisy_image, t, learned_var=True,
+                round_pred_x_0=round_pred_x_0)
 
             loss = loss_fn(
                 noise, output[:, :x_0.shape[1]], x_0, t.to(device), true_mean,

@@ -28,10 +28,7 @@ class Unet(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim)
         )
 
-        self.label_dist_embedding = nn.Sequential(
-            nn.Linear(num_classes - 1, time_emb_dim),
-            nn.SiLU(),
-            nn.Linear(time_emb_dim, time_emb_dim))
+        self.label_dist_embedding = nn.Embedding(num_classes, time_emb_dim)
 
         self.attention_dims = attention_dims
 
@@ -95,7 +92,7 @@ class Unet(nn.Module):
 
         t = self.time_mlp(t)
         if label_dist is not None:
-            t = t + self.label_dist_embedding(label_dist)
+            t = t + self.label_dist_embedding(torch.argmax(label_dist, dim=1))
 
         h = []
         ds = 1
@@ -280,7 +277,7 @@ class Attention(nn.Module):
     # ported from
     # ("https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/unet.py")"
 
-    def __init__(self, channels, num_heads=4, num_head_channels=64, groups=8):
+    def __init__(self, channels, num_heads=4, num_head_channels=32, groups=8):
 
         super().__init__()
         self.channels = channels
