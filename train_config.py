@@ -45,13 +45,13 @@ round_pred_x_0 = True
 
 mask_one_hot = False
 pred_type = "mask"  # "all, mask or image"
-condition = "label_dist"  # "None, label_dist or mask"
+condition = "None"  # "None, label_dist or mask"
 super_res = False
 
 
 # Train config
 
-batch_size = 32
+batch_size = 12
 optimizer = "AdamW"
 learning_rate = 0.00001
 epochs = 1000
@@ -65,8 +65,8 @@ loss = "hybrid"
 evaluate_every = 50
 start_eval_epoch = 0
 log_best = False
-sampling_steps = 200
-num_samples = 4
+sampling_steps = 100
+num_samples = 50
 round_masks = False
 
 random_seed = 1234
