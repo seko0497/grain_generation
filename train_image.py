@@ -189,8 +189,7 @@ def main():
     # initialize optimizer
     optimizer = getattr(torch.optim, config.get("optimizer"))(
         model.parameters(),
-        lr=config.get("learning_rate"),
-        betas=[0.0, 0.999])
+        lr=config.get("learning_rate"))
     if checkpoint:
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     if config.get("loss") == "simple":
@@ -209,6 +208,7 @@ def main():
         best["epoch"] = checkpoint["epoch"]
         start_epoch = checkpoint["epoch"] + 1
     del checkpoint
+    torch.cuda.empty_cache()
 
     # ################## train loop ################################
     for epoch in range(start_epoch, config.get("epochs") + 1):
@@ -321,7 +321,12 @@ def main():
                     if config.get("use_wandb"):
                         wandb.save("wear_generation/best.pth")
 
-            # log samples and scores in weights and biases
+            log_samples = True
+            if mean_current_fid > best["fid"] and config.get("log_best"):
+                log_samples = False
+
+            if log_samples:
+                # log samples and scores in weights and biases
                 if config.get("use_wandb"):
 
                     num_samples_log = 4

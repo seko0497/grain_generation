@@ -53,7 +53,6 @@ class WearDataset(Dataset):
         inp = self.transforms(inp)
 
         trg = np.load(self.targets[index])
-        print(np.unique(trg))
 
         trg = torch.nn.functional.one_hot(
             torch.LongTensor(trg), self.num_classes)
@@ -81,19 +80,17 @@ class WearDataset(Dataset):
 
 
 # DEBUG
-wear_dataset = WearDataset(
-    "data/RT100U_processed/train", (448, 576), (256, 256),
-    mask_one_hot=False, label_dist=True)
-wear_dataloader = DataLoader(wear_dataset, batch_size=4)
-for batch in wear_dataloader:
-    # pass
-    # print(batch["L"])
-    for image, label_dist in zip(batch["I"], batch["L"]):
-        print(image.shape)
-        print(torch.unique(image[3:]))
-        quit()
-        trg = torch.moveaxis(image[3:], 0, -1).numpy()
-        trg = (trg + 1) / 2
-        print(label_dist)
-        plt.imshow(trg)
-        plt.show()
+# wear_dataset = WearDataset(
+#     "data/RT100U_processed/train", (448, 576), (256, 256),
+#     mask_one_hot=False, label_dist=True)
+# wear_dataloader = DataLoader(wear_dataset, batch_size=4)
+# for batch in wear_dataloader:
+#     # pass
+#     # print(batch["L"])
+#     for image, label_dist in zip(batch["I"], batch["L"]):
+#         trg = torch.moveaxis(image[-1:], 0, -1).numpy()
+#         trg = (trg + 1) / 2
+#         print(np.unique(trg))
+#         print(label_dist)
+#         plt.imshow(trg)
+#         plt.show()

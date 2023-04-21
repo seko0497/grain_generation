@@ -277,7 +277,7 @@ class Attention(nn.Module):
     # ported from
     # ("https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/unet.py")"
 
-    def __init__(self, channels, num_heads=4, num_head_channels=32, groups=8):
+    def __init__(self, channels, num_heads=4, num_head_channels=64, groups=8):
 
         super().__init__()
         self.channels = channels

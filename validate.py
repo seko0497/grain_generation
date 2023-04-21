@@ -181,16 +181,6 @@ class Validation():
 
         else:
 
-            if condition == "label_dist":
-                label_dist = torch.zeros((batch_size, num_classes)).to(device)
-                indices = torch.randint(num_classes, size=(batch_size,))
-                label_dist[torch.arange(batch_size), indices] = 1
-                label_dists.append(label_dist)
-                label_dists = torch.cat(label_dists)
-                sample_dict["label_dists"] = label_dists
-            else:
-                label_dist = None
-
             generated = 0
             for _ in range(math.ceil(num_samples / batch_size)):
 
@@ -198,6 +188,16 @@ class Validation():
                     n = num_samples - generated
                 else:
                     n = batch_size
+
+                if condition == "label_dist":
+                    label_dist = torch.zeros((n, num_classes)).to(device)
+                    indices = torch.randint(num_classes, size=(n,))
+                    label_dist[torch.arange(n), indices] = 1
+                    label_dists.append(label_dist)
+                    label_dists = torch.cat(label_dists)
+                    sample_dict["label_dists"] = label_dists
+                else:
+                    label_dist = None
 
                 samples.append(diffusion.sample(
                     model,
@@ -243,6 +243,7 @@ class Validation():
             pred_label_dists.append(pred_label_dist)
         pred_label_dists = torch.stack(pred_label_dists)
 
-        return torch.sqrt(
-            torch.nn.functional.mse_loss(
-                pred_label_dists.to(label_dists.device), label_dists))
+        accuracy = (pred_label_dists.to(label_dists.device).argmax(dim=1) ==
+                    label_dists.argmax(dim=1))
+
+        return accuracy.float().mean()
