@@ -30,10 +30,10 @@ save_models = True
 beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
-schedule = "cosine"
-model_dim = 192
-dim_mults = (1, 2, 3, 4)
-num_resnet_blocks = 3
+schedule = "linear"
+model_dim = 64
+dim_mults = (1, 1, 2, 2, 4, 4)
+num_resnet_blocks = 2
 dropout = 0.1
 drop_condition_rate = 0.2
 guidance_scale = 1.5
@@ -51,10 +51,10 @@ super_res = False
 
 # Train config
 
-batch_size = 12
+batch_size = 64
 optimizer = "AdamW"
 learning_rate = 0.00001
-epochs = 1000
+epochs = 3000
 ema = False
 num_workers = 32
 loss = "hybrid"

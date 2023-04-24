@@ -1,3 +1,4 @@
+import math
 import os
 import numpy as np
 import torch
@@ -12,17 +13,17 @@ from image_transforms import get_rgb
 # parameters
 run_path = {
     "local": None,
-    "wandb": "seko97/grain_generation/jfkd4lza",
+    "wandb": "seko97/wear_generation/jv50uey3",
     "filename": "best.pth"}
-sampling_steps = 200
 
-num_samples = 25
-round_masks = True
+sampling_steps = 100
+num_samples = 128
+round_masks = False
 
-dataset = "grain"
+dataset = "wear"
 in_channels = 1
 out_channels = 2
-num_classes = 2
+num_classes = 3
 img_channels = 1
 
 # call  wandb API
@@ -58,6 +59,7 @@ model = Unet(
 model = torch.nn.parallel.DataParallel(model)
 model.load_state_dict(checkpoint["model_state_dict"])
 model.to(device)
+model.eval()
 
 diffusion = Diffusion(
     get_schedule(
@@ -73,50 +75,67 @@ diffusion = Diffusion(
     num_classes=num_classes)
 
 save_folder = (
-    f"grain_generation/samples/"
+    f"wear_generation/samples/"
     f"{run.name}/epoch{checkpoint['epoch']}_steps{sampling_steps}")
 image_validation = Validation(img_channels=img_channels)
 
-samples = image_validation.generate_samples(
-    "None",
-    num_samples=num_samples,
-    pred_type=run.config["pred_type"],
-    img_channels=img_channels,
-    num_classes=num_classes,
-    diffusion=diffusion,
-    sampling_steps=sampling_steps,
-    batch_size=run.config["batch_size"],
-    model=model,
-    device=device)
-if "masks" in samples:
-    sample_masks = samples["masks"]
-    if round_masks:
-        sample_masks = torch.round(sample_masks)
+generated = 0
+for _ in range(math.ceil(num_samples / run.config["batch_size"])):
 
-for i in range(num_samples):
+    if num_samples - generated < run.config["batch_size"]:
+        n = num_samples - generated
+    else:
+        n = run.config["batch_size"]
 
-    if "images" in samples:
-        if dataset == "grain":
-            sample_intensity = get_rgb(samples["images"][i, 0])
-            sample_depth = get_rgb(samples["images"][i, 1])
-            sample_image = np.vstack(
-                (sample_intensity, sample_depth))
-        elif dataset == "wear":
-            sample_image = (samples["images"]
-                            .cpu().detach().numpy())
-            sample_image = np.moveaxis(sample_image, 0, -1)
+    samples = image_validation.generate_samples(
+        "None",
+        num_samples=n,
+        pred_type=run.config["pred_type"],
+        img_channels=img_channels,
+        num_classes=num_classes,
+        diffusion=diffusion,
+        sampling_steps=sampling_steps,
+        batch_size=run.config["batch_size"],
+        model=model,
+        device=device,
+        round_pred_x_0=run.config["round_pred_x_0"])
     if "masks" in samples:
-        sample_mask = get_rgb(sample_masks[i, 0])
+        sample_masks = samples["masks"]
+        if round_masks:
+            if num_classes > 2:
+                sample_masks *= num_classes
+                sample_masks[sample_masks == num_classes] = num_classes - 1
+                sample_masks = sample_masks.int()
+                sample_masks = sample_masks / (num_classes - 1)
+            else:
+                sample_masks = torch.round(sample_masks)
 
-    if "images" in samples and "masks" in samples:
-        sample = np.vstack((sample_image, sample_mask))
-    elif "images" not in samples:
-        sample = sample_mask
-    elif "masks" not in samples:
-        sample = sample_image
+    for i in range(n):
 
-    sample = (sample * 255).astype(np.uint8)
-    image = Image.fromarray(sample)
-    if not os.path.exists(save_folder):
-        os.makedirs(save_folder)
-    image.save(f"{save_folder}/sample_{i}.png")
+        if "images" in samples:
+            if dataset == "grain":
+                sample_intensity = get_rgb(samples["images"][i, 0])
+                sample_depth = get_rgb(samples["images"][i, 1])
+                sample_image = np.vstack(
+                    (sample_intensity, sample_depth))
+            elif dataset == "wear":
+                sample_image = (samples["images"]
+                                .cpu().detach().numpy())
+                sample_image = np.moveaxis(sample_image, 0, -1)
+        if "masks" in samples:
+            sample_mask = get_rgb(sample_masks[i, 0])
+
+        if "images" in samples and "masks" in samples:
+            sample = np.vstack((sample_image, sample_mask))
+        elif "images" not in samples:
+            sample = sample_mask
+        elif "masks" not in samples:
+            sample = sample_image
+
+        sample = (sample * 255).astype(np.uint8)
+        image = Image.fromarray(sample)
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
+        image.save(f"{save_folder}/sample_{i + generated}.png")
+
+    generated += n
