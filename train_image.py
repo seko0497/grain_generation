@@ -22,7 +22,7 @@ def main():
     # initialize weights and biases logging
     if config_dict["use_wandb"]:
         wandb.init(
-            config=config_dict, entity="seko97", project="grain_generation")
+            config=config_dict, entity="seko97", project="wear_generation")
     config = Config(config=config_dict, wandb=config_dict["use_wandb"])
 
     if config.get("use_wandb"):
@@ -115,6 +115,9 @@ def main():
         mask_validation.fit_real_samples(
             train_loader, channel=mask_channel,
             one_hot=config.get("mask_one_hot"))
+        mask_validation.fit_real_samples(
+            valid_loader, channel=mask_channel,
+            one_hot=config.get("mask_one_hot"))
     else:
         mask_validation = None
 
@@ -205,6 +208,7 @@ def main():
         best["epoch"] = checkpoint["epoch"]
         start_epoch = checkpoint["epoch"] + 1
     del checkpoint
+    torch.cuda.empty_cache()
 
     # ################## train loop ################################
     for epoch in range(start_epoch, config.get("epochs") + 1):
@@ -223,7 +227,8 @@ def main():
                            pred_type=config.get("pred_type"),
                            condition=config.get("condition"),
                            super_res=config.get("super_res"),
-                           drop_rate=config.get("drop_condition_rate"))
+                           drop_rate=config.get("drop_condition_rate"),
+                           round_pred_x_0=config.get("round_pred_x_0"))
 
         if (epoch % config.get("evaluate_every") == 0 and
                 epoch >= config.get("start_eval_epoch")):
@@ -249,18 +254,24 @@ def main():
                 num_samples=config.get("num_samples"),
                 guidance_scale=config.get("guidance_scale"),
                 pred_noise=config.get("pred_noise"),
-                clamp=config.get("clamp"))
+                clamp=config.get("clamp"),
+                round_pred_x_0=config.get("round_pred_x_0"))
 
             # process masks
             if "masks" in samples:
                 sample_masks = samples["masks"]
                 if config.get("round_masks"):
                     sample_masks = torch.round(sample_masks)
+
+                # sample_masks *= num_classes
+                # mask_pred[mask_pred == num_classes] = num_classes - 1.0
+                # mask_pred = mask_pred.int().float()
+                # mask_pred /= num_classes - 1.0
+
             # calculate label dists loss
-            if "label_dist" in samples:
-                label_dist_rmse = validation.label_dist_rmse(
-                    sample_masks,  samples["label_dists"],
-                    train_loader.dataset.label_dist_scaler)
+            if "label_dists" in samples:
+                label_dist_rmse = validation.label_error(
+                    sample_masks,  samples["label_dists"])
             else:
                 label_dist_rmse = None
 
@@ -310,7 +321,12 @@ def main():
                     if config.get("use_wandb"):
                         wandb.save("wear_generation/best.pth")
 
-            # log samples and scores in weights and biases
+            log_samples = True
+            if mean_current_fid > best["fid"] and config.get("log_best"):
+                log_samples = False
+
+            if log_samples:
+                # log samples and scores in weights and biases
                 if config.get("use_wandb"):
 
                     num_samples_log = 4
@@ -350,15 +366,23 @@ def main():
 
                         wandb.log({f"Sample_{i}": wandb.Image(sample)},
                                   step=epoch, commit=False)
-            # log scores
-            fid_log = {"mean_fid": mean_current_fid,
-                       "best_epoch": best["epoch"],
-                       "best_fid": best["fid"]}
 
-            for key in current_fid.keys():
-                fid_log[f"fid_{key}"] = current_fid[key]
+            if config.get("use_wandb"):
+                # log scores
+                fid_log = {"mean_fid": mean_current_fid,
+                           "best_epoch": best["epoch"],
+                           "best_fid": best["fid"]}
 
-            wandb.log(fid_log, step=epoch, commit=False)
+                for key in current_fid.keys():
+                    fid_log[f"fid_{key}"] = current_fid[key]
+
+                wandb.log(fid_log, step=epoch, commit=False)
+
+                if label_dist_rmse is not None:
+                    wandb.log(
+                        {"label_dist_error": label_dist_rmse},
+                        step=epoch,
+                        commit=False)
 
         if config.get("use_wandb"):
             wandb.log({"train_loss": epoch_loss}, step=epoch)

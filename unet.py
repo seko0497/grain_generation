@@ -28,10 +28,7 @@ class Unet(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim)
         )
 
-        self.label_dist_embedding = nn.Sequential(
-            nn.Linear(num_classes - 1, time_emb_dim),
-            nn.SiLU(),
-            nn.Linear(time_emb_dim, time_emb_dim))
+        self.label_dist_embedding = nn.Embedding(num_classes, time_emb_dim)
 
         self.attention_dims = attention_dims
 
@@ -95,7 +92,7 @@ class Unet(nn.Module):
 
         t = self.time_mlp(t)
         if label_dist is not None:
-            t = t + self.label_dist_embedding(label_dist)
+            t = t + self.label_dist_embedding(torch.argmax(label_dist, dim=1))
 
         h = []
         ds = 1

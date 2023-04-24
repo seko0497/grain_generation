@@ -39,10 +39,8 @@ class WearDataset(Dataset):
         ])
 
         self.target_transforms = transforms.Compose([
-            transforms.ToTensor(),
             transforms.CenterCrop(raw_img_size[0]),
-            transforms.Resize(
-                img_size, interpolation=transforms.InterpolationMode.NEAREST),
+            transforms.Resize(img_size),
         ])
 
     def __len__(self):
@@ -56,57 +54,43 @@ class WearDataset(Dataset):
 
         trg = np.load(self.targets[index])
 
-        trg = self.target_transforms(trg)
+        trg = torch.nn.functional.one_hot(
+            torch.LongTensor(trg), self.num_classes)
+
+        trg = self.target_transforms(torch.moveaxis(trg, -1, 0))
 
         if self.label_dist:
-            counter = Counter({cl: 0 for cl in range(self.num_classes)})
-            counter.update(np.array(trg).flatten())
-            label_dist = np.array(
-                [dict(counter)[cl + 1] for cl in range(self.num_classes - 1)],
-                dtype=float)
-            label_dist /= label_dist.sum()
+            label_dist = torch.zeros((self.num_classes,))
+            trg_cls = torch.argmax(trg, dim=0)
+            if torch.unique(trg_cls).shape[0] == self.num_classes:
+                label_dist[-1] = 1.0
+            else:
+                label_dist[torch.unique(trg_cls).int()[-1].item() - 1] = 1.0
 
-        if self.one_hot:
-            trg = torch.nn.functional.one_hot(trg[0].long(),
-                                              num_classes=self.num_classes)
-            trg = torch.moveaxis(trg, -1, 0)
-        else:
+        if not self.one_hot:
+            trg = torch.argmax(trg, dim=0, keepdim=True)
             trg = torch.Tensor(trg / (self.num_classes - 1))
         trg = trg * 2 - 1
 
         if self.label_dist:
             return {"I": torch.cat((inp, trg)).float(),
-                    "L": torch.Tensor(label_dist)}
+                    "L": torch.Tensor(label_dist).long()}
         else:
             return {"I": torch.cat((inp, trg)).float()}
 
 
-# def calc_min_max():
-
-#     wear_dataset = WearDataset(
-#         "data/RT100U_processed/train", (448, 576), (256, 256), norm=None)
-#     wear_dataloader = DataLoader(wear_dataset, batch_size=128)
-#     scaler = MinMaxScaler()
-#     for batch in wear_dataloader:
-#         scaler.partial_fit(batch["L"])
-
-#     print(scaler.data_max_, scaler.data_min_)
-
-
-# calc_min_max()
-
-# # DEBUG
-
-# norm = ([0.97099304, 0., 0.], [0.99629211, 0.0241394, 0.02012634])
-
+# DEBUG
 # wear_dataset = WearDataset(
 #     "data/RT100U_processed/train", (448, 576), (256, 256),
-#     mask_one_hot=False, norm=norm)
+#     mask_one_hot=False, label_dist=True)
 # wear_dataloader = DataLoader(wear_dataset, batch_size=4)
 # for batch in wear_dataloader:
-#     print(batch["L"])
-#     # image = torch.moveaxis(batch["I"][0, :3], 0, -1).numpy()
-#     # trg = torch.moveaxis(batch["I"][0, 3:], 0, -1).numpy()
-#     # image = (image + 1) / 2
-#     # plt.imshow(trg)
-#     # plt.show()
+#     # pass
+#     # print(batch["L"])
+#     for image, label_dist in zip(batch["I"], batch["L"]):
+#         trg = torch.moveaxis(image[-1:], 0, -1).numpy()
+#         trg = (trg + 1) / 2
+#         print(np.unique(trg))
+#         print(label_dist)
+#         plt.imshow(trg)
+#         plt.show()

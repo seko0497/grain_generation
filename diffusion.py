@@ -70,7 +70,7 @@ class Diffusion:
 
     def sample(self, model, n, mask=None, label_dist=None, low_res=None,
                sampling_steps=None, guidance_scale=0.2, pred_noise=True,
-               clamp=True):
+               clamp=True, round_pred_x_0=False):
 
         model.eval()
         with torch.no_grad():
@@ -140,7 +140,8 @@ class Diffusion:
                         torch.full((n,), t),
                         learned_var=True,
                         pred_noise=pred_noise,
-                        clamp=clamp)
+                        clamp=clamp,
+                        round_pred_x_0=round_pred_x_0)
 
                 else:
 
@@ -151,7 +152,8 @@ class Diffusion:
 
                     model_mean, model_var = self.p(
                         model_mean, model_var, x, torch.full((n,), t),
-                        pred_noise=pred_noise, clamp=clamp)
+                        pred_noise=pred_noise, clamp=clamp,
+                        round_pred_x_0=round_pred_x_0)
 
                 if t == 0:
 
@@ -206,7 +208,7 @@ class Diffusion:
         return self.mean(x_t, x_0, t), posterior_log_variance_clipped_t
 
     def p(self, model_mean, model_var, x_t, t, learned_var=False,
-          pred_noise=True, clamp=True):
+          pred_noise=True, clamp=True, round_pred_x_0=False):
 
         if learned_var:
             # Equation 15 improved ddpm
@@ -234,6 +236,25 @@ class Diffusion:
 
         if clamp:
             pred_x_0 = pred_x_0.clamp(-1, 1)
+
+        if round_pred_x_0:
+
+            if pred_x_0.shape[1] == 1:
+                mask_pred = pred_x_0
+            else:
+                mask_pred = pred_x_0[:, -1:]
+
+            mask_pred = (mask_pred + 1) / 2
+            mask_pred *= self.num_classes
+            mask_pred[mask_pred == self.num_classes] = self.num_classes - 1
+            mask_pred = mask_pred.int()
+            mask_pred = mask_pred / (self.num_classes - 1)
+            mask_pred = mask_pred * 2 - 1
+
+            if pred_x_0.shape[1] == 1:
+                pred_x_0 = mask_pred
+            else:
+                pred_x_0[:, -1:] = mask_pred
 
         # get q_posterior mean of predicted x_0
         model_mean, __ = self.q_posterior(x_t, pred_x_0, t)
