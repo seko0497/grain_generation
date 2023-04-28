@@ -31,30 +31,30 @@ beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
 schedule = "linear"
-model_dim = 64
+model_dim = 256
 dim_mults = (1, 1, 2, 2, 4, 4)
 num_resnet_blocks = 2
 dropout = 0.1
 drop_condition_rate = 0.2
-guidance_scale = 1.5
+guidance_scale = 2.0
 clamp = True
 pred_noise = True
-round_pred_x_0 = True
+round_pred_x_0 = False
 
 # Data config
 
-mask_one_hot = False
-pred_type = "mask"  # "all, mask or image"
-condition = "None"  # "None, label_dist or mask"
+mask_one_hot = True
+pred_type = "image"  # "all, mask or image"
+condition = "mask"  # "None, label_dist or mask"
 super_res = False
 
 
 # Train config
 
-batch_size = 64
+batch_size = 8
 optimizer = "AdamW"
 learning_rate = 0.00001
-epochs = 3000
+epochs = 2000
 ema = False
 num_workers = 32
 loss = "hybrid"
@@ -62,11 +62,11 @@ loss = "hybrid"
 
 # Eval config
 
-evaluate_every = 50
-start_eval_epoch = 0
+evaluate_every = 5
+start_eval_epoch = 400
 log_best = False
 sampling_steps = 100
-num_samples = 50
+num_samples = 128
 round_masks = False
 
 random_seed = 1234

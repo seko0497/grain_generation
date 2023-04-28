@@ -132,21 +132,33 @@ class Validation():
 
         # sample
         if condition == "mask":
-            batch = next(iter(valid_loader))
-            sample_mask = batch["I"][:, img_channels:]
-            sample_batch = diffusion.sample(
-                model,
-                sample_mask.shape[0],
-                mask=sample_mask.to(
-                    device),
-                label_dist=None,
-                sampling_steps=sampling_steps,
-                guidance_scale=guidance_scale,
-                pred_noise=pred_noise,
-                clamp=clamp,
-                round_pred_x_0=round_pred_x_0)
-            sample_mask = torch.argmax(sample_mask, dim=1, keepdim=True)
-            samples = torch.cat((sample_batch.cpu(), sample_mask), dim=1)
+            generated = 0
+
+            for batch in valid_loader:
+
+                if num_samples - generated < batch_size:
+                    n = num_samples - generated
+                else:
+                    n = batch_size
+                sample_mask = batch["I"][:, img_channels:]
+                sample_batch = diffusion.sample(
+                    model,
+                    sample_mask.shape[0],
+                    mask=sample_mask.to(
+                        device),
+                    label_dist=None,
+                    sampling_steps=sampling_steps,
+                    guidance_scale=guidance_scale,
+                    pred_noise=pred_noise,
+                    clamp=clamp,
+                    round_pred_x_0=round_pred_x_0)
+                sample_mask = torch.argmax(sample_mask, dim=1, keepdim=True)
+                samples.append(
+                    torch.cat((sample_batch.cpu(), sample_mask), dim=1))
+                generated += n
+                if generated == num_samples:
+                    break
+            samples = torch.cat(samples)
 
         elif super_res:
 

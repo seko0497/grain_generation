@@ -14,13 +14,13 @@ from image_transforms import get_rgb
 
 run_path_mask = {
     "local": None,
-    "wandb": "seko97/grain_generation/jfkd4lza",
+    "wandb": "seko97/wear_generation/mkiqogaf",
     "filename": "best.pth"}
 sampling_steps_mask = 100
 
 run_path_image = {
     "local": None,
-    "wandb": "seko97/grain_generation/7varmv7t",
+    "wandb": "seko97/wear_generation/ld9delh5",
     "filename": "best.pth"}
 sampling_steps_image = 100
 
@@ -30,14 +30,14 @@ run_path_superres = {
     "filename": "best.pth"}
 sampling_steps_superres = 100
 
-num_samples = 15000
-superres = True
-split = True
-colormap = False
+num_samples = 8
+superres = False
+split = False
+colormap = True
 
-dataset = "grain"
-num_classes = 2
-img_channels = 2
+dataset = "wear"
+num_classes = 3
+img_channels = 3
 
 # call  wandb API
 wandb_api = wandb.Api()
@@ -146,39 +146,41 @@ image_diffusion = Diffusion(
     use_wandb=False,
     num_classes=num_classes)
 
-superres_model = SuperResUnet(
-    run_superres.config["model_dim"],
-    device,
-    in_channels=img_channels + 1,
-    out_channels=(img_channels + 1) * 2,
-    dim_mults=run_superres.config["dim_mults"],
-    num_resnet_blocks=run_superres.config["num_resnet_blocks"],
-    num_classes=num_classes)
-superres_model = torch.nn.parallel.DataParallel(superres_model)
-superres_model.load_state_dict(checkpoint_superres["model_state_dict"])
-superres_model.to(device)
+if superres:
 
-superres_diffusion = Diffusion(
-    get_schedule(
-        run_superres.config["schedule"],
-        run_superres.config["beta_0"],
-        run_superres.config["beta_t"],
-        run_superres.config["timesteps"]),
-    run_superres.config["timesteps"],
-    run_superres.config["img_size"],
-    device=device,
-    in_channels=img_channels + 1,
-    use_wandb=False,
-    num_classes=num_classes)
+    superres_model = SuperResUnet(
+        run_superres.config["model_dim"],
+        device,
+        in_channels=img_channels + 1,
+        out_channels=(img_channels + 1) * 2,
+        dim_mults=run_superres.config["dim_mults"],
+        num_resnet_blocks=run_superres.config["num_resnet_blocks"],
+        num_classes=num_classes)
+    superres_model = torch.nn.parallel.DataParallel(superres_model)
+    superres_model.load_state_dict(checkpoint_superres["model_state_dict"])
+    superres_model.to(device)
+
+    superres_diffusion = Diffusion(
+        get_schedule(
+            run_superres.config["schedule"],
+            run_superres.config["beta_0"],
+            run_superres.config["beta_t"],
+            run_superres.config["timesteps"]),
+        run_superres.config["timesteps"],
+        run_superres.config["img_size"],
+        device=device,
+        in_channels=img_channels + 1,
+        use_wandb=False,
+        num_classes=num_classes)
 
 save_folder = (
-    f"grain_generation/samples/"
+    f"{dataset}_generation/samples/"
     f"{run_image.name}_{run_mask.name}/"
     f"epoch{checkpoint_image['epoch']}_epoch{checkpoint_mask['epoch']}"
     f"steps{sampling_steps_image}_{sampling_steps_mask}")
 mask_validation = Validation(img_channels=img_channels)
 
-generated = 12800
+generated = 0
 
 for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
 
@@ -256,7 +258,7 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
                 sample_image = np.vstack(
                     (sample_intensity, sample_depth))
             elif dataset == "wear":
-                sample_image = sample_images.cpu().detach().numpy()
+                sample_image = sample_images[j].cpu().detach().numpy()
                 sample_image = np.moveaxis(sample_image, 0, -1)
 
             if colormap:
@@ -281,11 +283,18 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
                     image_depth.save(
                         f"{save_folder}/{j + generated}_depth.png")
 
-                    sample_mask = (
-                        sample_mask * 255).astype(np.uint8)
-                    image_mask = Image.fromarray(sample_mask)
-                    image_mask.save(
-                        f"{save_folder}/{j + generated}_target.png")
+                if dataset == "wear":
+                    sample_image = (sample_image * 255).astype(np.uint8)
+                    image = Image.fromarray(sample_image)
+                    image.save(
+                        f"{save_folder}/{j + generated}_image.png"
+                    )
+
+                sample_mask = (
+                    sample_mask * 255).astype(np.uint8)
+                image_mask = Image.fromarray(sample_mask)
+                image_mask.save(
+                    f"{save_folder}/{j + generated}_target.png")
             else:
                 sample = np.vstack((sample_image, sample_mask))
                 sample = (sample * 255).astype(np.uint8)

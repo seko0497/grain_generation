@@ -66,7 +66,7 @@ def main():
             train=False)
     elif config.get("dataset") == "wear":
         dataset_validation = WearDataset(
-            f"{config.get('wear_defaults')['root_dir']}/valid",
+            f"{config.get('wear_defaults')['root_dir']}/test",
             config.get("wear_defaults")["raw_img_size"],
             config.get("img_size"),
             mask_one_hot=config.get("mask_one_hot"),
@@ -284,7 +284,7 @@ def main():
                     current_fid["depth"] = depth_validation.valid_fid(
                         samples["images"][:, 1])
                 elif config.get("dataset") == "wear":
-                    current_fid["image"] = depth_validation.valid_fid(
+                    current_fid["image"] = image_validation.valid_fid(
                         samples["images"]
                     )
             if mask_validation is not None:
@@ -341,9 +341,9 @@ def main():
                                 sample_image = np.vstack(
                                     (sample_intensity, sample_depth))
                             elif config.get("dataset") == "wear":
-                                sample_image = (samples["images"]
+                                sample_image = (samples["images"][i]
                                                 .cpu().detach().numpy())
-                                np.moveaxis(sample_image, 0, -1)
+                                sample_image = np.moveaxis(sample_image, 0, -1)
                         if "masks" in samples:
                             sample_mask = get_rgb(sample_masks[i, 0])
 
