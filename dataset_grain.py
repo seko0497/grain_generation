@@ -10,8 +10,6 @@ from PIL import Image
 import os
 import einops
 
-from image_transforms import down_upsample
-
 
 class GrainDataset(Dataset):
 

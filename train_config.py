@@ -1,6 +1,6 @@
 # Data config
 
-dataset = "wear"
+dataset = "grain"
 
 grain_defaults = {
     "root_dir": "data/grains_txt",
@@ -17,12 +17,16 @@ wear_defaults = {
     "num_classes": 3
 }
 
-img_size = (256, 256)
+img_size = (64, 64)
 
 local = False
 use_wandb = True
 
-checkpoint = None
+use_checkpoint = False
+checkpoint = {
+    "local": False,
+    "wandb": "seko97/wear_generation/jgep3bb2",
+    "filename": "checkpoint.pth"}
 save_models = True
 
 # Model config
@@ -30,11 +34,11 @@ save_models = True
 beta_0 = 0.0001
 beta_t = 0.02
 timesteps = 1000
-schedule = "linear"
-model_dim = 256
-dim_mults = (1, 1, 2, 2, 4, 4)
-num_resnet_blocks = 2
-dropout = 0.1
+schedule = "cosine"
+model_dim = 192
+dim_mults = (1, 2, 3, 4)
+num_resnet_blocks = 3
+dropout = 0.0
 drop_condition_rate = 0.2
 guidance_scale = 2.0
 clamp = True
@@ -43,18 +47,18 @@ round_pred_x_0 = False
 
 # Data config
 
-mask_one_hot = True
-pred_type = "image"  # "all, mask or image"
-condition = "mask"  # "None, label_dist or mask"
+mask_one_hot = False
+pred_type = "all"  # "all, mask or image"
+condition = "None"  # "None, label_dist or mask"
 super_res = False
 
 
 # Train config
 
-batch_size = 8
+batch_size = 64
 optimizer = "AdamW"
-learning_rate = 0.00001
-epochs = 2000
+learning_rate = 0.0003
+epochs = 1000
 ema = False
 num_workers = 32
 loss = "hybrid"
@@ -63,10 +67,10 @@ loss = "hybrid"
 # Eval config
 
 evaluate_every = 5
-start_eval_epoch = 400
-log_best = False
-sampling_steps = 100
-num_samples = 128
+start_eval_epoch = 150
+log_best = True
+sampling_steps = 200
+num_samples = 100
 round_masks = False
 
 random_seed = 1234
@@ -96,6 +100,7 @@ config = {
     "num_samples": num_samples,
     "round_masks": round_masks,
     "use_wandb": use_wandb,
+    "use_checkpoint": use_checkpoint,
     "checkpoint": checkpoint,
     "save_models": save_models,
     "beta_0": beta_0,

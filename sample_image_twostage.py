@@ -20,7 +20,7 @@ sampling_steps_mask = 100
 
 run_path_image = {
     "local": None,
-    "wandb": "seko97/wear_generation/ld9delh5",
+    "wandb": "seko97/wear_generation/qoxc2bj4",
     "filename": "best.pth"}
 sampling_steps_image = 100
 
@@ -30,7 +30,7 @@ run_path_superres = {
     "filename": "best.pth"}
 sampling_steps_superres = 100
 
-num_samples = 8
+num_samples = 16
 superres = False
 split = False
 colormap = True
@@ -199,9 +199,15 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
         sampling_steps=sampling_steps_mask,
         batch_size=run_mask.config["batch_size"],
         model=mask_model,
-        device=device)["masks"]
+        device=device,
+        round_pred_x_0=run_mask.config["round_pred_x_0"])["masks"]
 
-    sample_masks = torch.round(sample_masks)
+    if dataset == "grain":
+        sample_masks = torch.round(sample_masks)
+    elif dataset == "wear":
+        sample_masks *= num_classes
+        sample_masks[sample_masks == num_classes] = num_classes - 1
+        sample_masks = sample_masks.int()
     sample_masks_one_hot = torch.nn.functional.one_hot(
         sample_masks.squeeze().long(),
         num_classes=num_classes).float()
@@ -261,8 +267,10 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
                 sample_image = sample_images[j].cpu().detach().numpy()
                 sample_image = np.moveaxis(sample_image, 0, -1)
 
+            if dataset == "wear":
+                sample_mask = sample_masks[j, 0] / (num_classes - 1)
             if colormap:
-                sample_mask = get_rgb(sample_masks[j, 0])
+                sample_mask = get_rgb(sample_mask)
             else:
                 sample_mask = sample_masks[j, 0].cpu().detach().numpy()
 

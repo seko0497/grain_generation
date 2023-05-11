@@ -22,7 +22,7 @@ def main():
     # initialize weights and biases logging
     if config_dict["use_wandb"]:
         wandb.init(
-            config=config_dict, entity="seko97", project="wear_generation")
+            config=config_dict, entity="seko97", project="grain_generation")
     config = Config(config=config_dict, wandb=config_dict["use_wandb"])
 
     if config.get("use_wandb"):
@@ -115,9 +115,6 @@ def main():
         mask_validation.fit_real_samples(
             train_loader, channel=mask_channel,
             one_hot=config.get("mask_one_hot"))
-        mask_validation.fit_real_samples(
-            valid_loader, channel=mask_channel,
-            one_hot=config.get("mask_one_hot"))
     else:
         mask_validation = None
 
@@ -138,8 +135,23 @@ def main():
                     else in_channels)
 
     # load Checkpoint
-    if config.get("checkpoint"):
-        checkpoint = torch.load(config.get("checkpoint"))
+    if config.get("use_checkpoint"):
+        if config.get("checkpoint")["local"]:
+            checkpoint = torch.load(config.get("checkpoint"))
+        else:
+            wandb_api = wandb.Api()
+            run = wandb_api.run(config.get("checkpoint")["wandb"])
+            run_name = run.name
+            model_folder = (
+                f"{config.get('dataset')}_generation/models/"
+                f"{run_name}")
+            print(f"restoring {model_folder}")
+            checkpoint = wandb.restore(
+                f"wear_generation/{config.get('checkpoint')['filename']}",
+                run_path=config.get("checkpoint")["wandb"],
+                root=model_folder)
+            print("restored")
+            checkpoint = torch.load(checkpoint.name)
     else:
         checkpoint = None
 
