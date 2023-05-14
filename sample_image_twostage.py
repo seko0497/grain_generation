@@ -30,10 +30,10 @@ run_path_superres = {
     "filename": "best.pth"}
 sampling_steps_superres = 100
 
-num_samples = 16
+num_samples = 5000
 superres = False
-split = False
-colormap = True
+split = True
+colormap = False
 
 dataset = "wear"
 num_classes = 3
@@ -269,10 +269,12 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
 
             if dataset == "wear":
                 sample_mask = sample_masks[j, 0] / (num_classes - 1)
+            else:
+                sample_mask = sample_masks[j, 0]
             if colormap:
                 sample_mask = get_rgb(sample_mask)
             else:
-                sample_mask = sample_masks[j, 0].cpu().detach().numpy()
+                sample_mask = sample_mask.cpu().detach().numpy()
 
             if not os.path.exists(save_folder):
                 os.makedirs(save_folder)
