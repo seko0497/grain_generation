@@ -180,7 +180,7 @@ save_folder = (
     f"steps{sampling_steps_image}_{sampling_steps_mask}")
 mask_validation = Validation(img_channels=img_channels)
 
-generated = 0
+generated = 4679
 
 for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
 
