@@ -30,7 +30,7 @@ run_path_superres = {
     "filename": "best.pth"}
 sampling_steps_superres = 100
 
-num_samples = 5000
+num_samples = 15000
 superres = False
 split = True
 colormap = False
@@ -180,7 +180,7 @@ save_folder = (
     f"steps{sampling_steps_image}_{sampling_steps_mask}")
 mask_validation = Validation(img_channels=img_channels)
 
-generated = 4679
+generated = 7623
 
 for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
 
@@ -214,17 +214,25 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
     sample_masks_one_hot = sample_masks_one_hot * 2 - 1
     sample_masks_one_hot = torch.moveaxis(sample_masks_one_hot, -1, 1)
 
-    if run_image.config["batch_size"] < n:
-        num_batches = n // run_image.config["batch_size"]
-    else:
-        num_batches = 1
+    generated_images = 0
+    for i in range(math.ceil(n / run_image.config["batch_size"])):
 
-    for i in range(num_batches):
+        if n - generated_images < run_image.config["batch_size"]:
+            num_samples_images = n - generated_images
+        else:
+            num_samples_images = run_image.config["batch_size"]
+
+    # if run_image.config["batch_size"] < n:
+    #     num_batches = n // run_image.config["batch_size"]
+    # else:
+    #     num_batches = 1
+
+    # for i in range(num_batches):
         sample_masks_batch = sample_masks_one_hot[
-            i * n:(i + 1) * n]
+            generated_images:generated_images + num_samples_images]
         sample_images = image_diffusion.sample(
                 image_model,
-                n,
+                num_samples_images,
                 mask=sample_masks_batch.to(
                     device),
                 sampling_steps=sampling_steps_image,
@@ -250,7 +258,7 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
             sample_masks = superres_samples[:, img_channels:]
             sample_masks = torch.round(sample_masks)
 
-        for j in range(n):
+        for j in range(num_samples_images):
 
             if dataset == "grain":
                 if colormap:
@@ -268,9 +276,10 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
                 sample_image = np.moveaxis(sample_image, 0, -1)
 
             if dataset == "wear":
-                sample_mask = sample_masks[j, 0] / (num_classes - 1)
+                sample_mask = sample_masks[
+                    j + generated_images, 0] / (num_classes - 1)
             else:
-                sample_mask = sample_masks[j, 0]
+                sample_mask = sample_masks[j + generated_images, 0]
             if colormap:
                 sample_mask = get_rgb(sample_mask)
             else:
@@ -279,36 +288,39 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
             if not os.path.exists(save_folder):
                 os.makedirs(save_folder)
 
+            image_index = j + generated + generated_images
+
             if split:
                 if dataset == "grain":
                     sample_intensity = (
                         sample_intensity * 255).astype(np.uint8)
                     image_intensity = Image.fromarray(sample_intensity)
                     image_intensity.save(
-                        f"{save_folder}/{j + generated}_intensity.png")
+                        f"{save_folder}/{image_index}_intensity.png")
 
                     sample_depth = (
                         sample_depth * 255).astype(np.uint8)
                     image_depth = Image.fromarray(sample_depth)
                     image_depth.save(
-                        f"{save_folder}/{j + generated}_depth.png")
+                        f"{save_folder}/{image_index}_depth.png")
 
                 if dataset == "wear":
                     sample_image = (sample_image * 255).astype(np.uint8)
                     image = Image.fromarray(sample_image)
                     image.save(
-                        f"{save_folder}/{j + generated}_image.png"
+                        f"{save_folder}/{image_index}_image.png"
                     )
 
                 sample_mask = (
                     sample_mask * 255).astype(np.uint8)
                 image_mask = Image.fromarray(sample_mask)
                 image_mask.save(
-                    f"{save_folder}/{j + generated}_target.png")
+                    f"{save_folder}/{image_index}_target.png")
             else:
                 sample = np.vstack((sample_image, sample_mask))
                 sample = (sample * 255).astype(np.uint8)
                 image = Image.fromarray(sample)
 
-                image.save(f"{save_folder}/sample_{j + generated}.png")
-        generated += run_image.config["batch_size"]
+                image.save(f"{save_folder}/sample_{image_index}.png")
+        generated_images += num_samples_images
+    generated += n

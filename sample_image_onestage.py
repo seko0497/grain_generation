@@ -24,7 +24,7 @@ run_path_superres = {
 sampling_steps_superres = 100
 
 
-num_samples = 5000
+num_samples = 15000
 superres = False
 split = True
 colormap = False
@@ -134,7 +134,7 @@ save_folder = (
     f"{run.name}/epoch{checkpoint['epoch']}_steps{sampling_steps}")
 image_validation = Validation(img_channels=img_channels)
 
-generated = 0
+generated = 5000
 for _ in range(math.ceil(num_samples / run.config["batch_size"])):
 
     if num_samples - generated < run.config["batch_size"]:
