@@ -59,19 +59,21 @@ else:
     checkpoint = torch.load(
         f"wear_generation/{run_path['filename']}")
 
-# get checkpoint superres model
-if run_path_superres["local"] is None:
-    model_folder_superres = f"{dataset}_generation/models/{run_superres_name}"
-    print(f"restoring {model_folder_superres}")
-    checkpoint_superres = wandb.restore(
-        f"wear_generation/{run_path_superres['filename']}",
-        run_path=run_path_superres["wandb"],
-        root=model_folder_superres)
-    print("restored")
-    checkpoint_superres = torch.load(checkpoint_superres.name)
-else:
-    checkpoint_superres = torch.load(
-        f"wear_generation/{run_path_superres['filename']}")
+if superres:
+    # get checkpoint superres model
+    if run_path_superres["local"] is None:
+        model_folder_superres = (
+            f"{dataset}_generation/models/{run_superres_name}")
+        print(f"restoring {model_folder_superres}")
+        checkpoint_superres = wandb.restore(
+            f"wear_generation/{run_path_superres['filename']}",
+            run_path=run_path_superres["wandb"],
+            root=model_folder_superres)
+        print("restored")
+        checkpoint_superres = torch.load(checkpoint_superres.name)
+    else:
+        checkpoint_superres = torch.load(
+            f"wear_generation/{run_path_superres['filename']}")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -132,9 +134,12 @@ if superres:
 save_folder = (
     f"{dataset}_generation/samples/"
     f"{run.name}/epoch{checkpoint['epoch']}_steps{sampling_steps}")
+if not os.path.exists(save_folder):
+    os.makedirs(save_folder)
+
 image_validation = Validation(img_channels=img_channels)
 
-generated = 5000
+generated = 14998
 for _ in range(math.ceil(num_samples / run.config["batch_size"])):
 
     if num_samples - generated < run.config["batch_size"]:
@@ -211,9 +216,6 @@ for _ in range(math.ceil(num_samples / run.config["batch_size"])):
                 sample_mask = get_rgb(sample_mask)
             else:
                 sample_mask = sample_masks[i, 0].cpu().detach().numpy()
-
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
 
         if "images" in samples:
             if dataset == "grain":

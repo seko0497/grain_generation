@@ -79,19 +79,21 @@ else:
     checkpoint_image = torch.load(
         f"wear_generation/{run_path_image['filename']}")
 
-# get checkpoint superres model
-if run_path_superres["local"] is None:
-    model_folder_superres = f"{dataset}_generation/models/{run_superres_name}"
-    print(f"restoring {model_folder_superres}")
-    checkpoint_superres = wandb.restore(
-        f"wear_generation/{run_path_superres['filename']}",
-        run_path=run_path_superres["wandb"],
-        root=model_folder_superres)
-    print("restored")
-    checkpoint_superres = torch.load(checkpoint_superres.name)
-else:
-    checkpoint_superres = torch.load(
-        f"wear_generation/{run_path_superres['filename']}")
+if superres:
+    # get checkpoint superres model
+    if run_path_superres["local"] is None:
+        model_folder_superres = (
+            f"{dataset}_generation/models/{run_superres_name}")
+        print(f"restoring {model_folder_superres}")
+        checkpoint_superres = wandb.restore(
+            f"wear_generation/{run_path_superres['filename']}",
+            run_path=run_path_superres["wandb"],
+            root=model_folder_superres)
+        print("restored")
+        checkpoint_superres = torch.load(checkpoint_superres.name)
+    else:
+        checkpoint_superres = torch.load(
+            f"wear_generation/{run_path_superres['filename']}")
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -180,7 +182,7 @@ save_folder = (
     f"steps{sampling_steps_image}_{sampling_steps_mask}")
 mask_validation = Validation(img_channels=img_channels)
 
-generated = 7623
+generated = 5902
 
 for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
 
