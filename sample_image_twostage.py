@@ -14,13 +14,13 @@ from image_transforms import get_rgb
 
 run_path_mask = {
     "local": None,
-    "wandb": "seko97/wear_generation/mkiqogaf",
+    "wandb": "seko97/grain_generation/jfkd4lza",
     "filename": "best.pth"}
 sampling_steps_mask = 100
 
 run_path_image = {
     "local": None,
-    "wandb": "seko97/wear_generation/qoxc2bj4",
+    "wandb": "seko97/grain_generation/7varmv7t",
     "filename": "best.pth"}
 sampling_steps_image = 100
 
@@ -30,14 +30,14 @@ run_path_superres = {
     "filename": "best.pth"}
 sampling_steps_superres = 100
 
-num_samples = 15000
-superres = False
+num_samples = 5014
+superres = True
 split = True
 colormap = False
 
-dataset = "wear"
-num_classes = 3
-img_channels = 3
+dataset = "grain"
+num_classes = 2
+img_channels = 2
 
 # call  wandb API
 wandb_api = wandb.Api()
@@ -106,7 +106,7 @@ mask_model = Unet(
     num_resnet_blocks=run_mask.config["num_resnet_blocks"],
     num_classes=num_classes)
 mask_model = torch.nn.parallel.DataParallel(mask_model)
-mask_model.load_state_dict(checkpoint_mask["model_state_dict"])
+mask_model.load_state_dict(checkpoint_mask["model_state_dict"], strict=False)
 mask_model.to(device)
 
 mask_diffusion = Diffusion(
@@ -132,7 +132,7 @@ image_model = Unet(
     num_classes=num_classes,
     spade=True)
 image_model = torch.nn.parallel.DataParallel(image_model)
-image_model.load_state_dict(checkpoint_image["model_state_dict"])
+image_model.load_state_dict(checkpoint_image["model_state_dict"], strict=False)
 image_model.to(device)
 
 image_diffusion = Diffusion(
@@ -159,7 +159,8 @@ if superres:
         num_resnet_blocks=run_superres.config["num_resnet_blocks"],
         num_classes=num_classes)
     superres_model = torch.nn.parallel.DataParallel(superres_model)
-    superres_model.load_state_dict(checkpoint_superres["model_state_dict"])
+    superres_model.load_state_dict(
+        checkpoint_superres["model_state_dict"], strict=False)
     superres_model.to(device)
 
     superres_diffusion = Diffusion(
@@ -182,7 +183,7 @@ save_folder = (
     f"steps{sampling_steps_image}_{sampling_steps_mask}")
 mask_validation = Validation(img_channels=img_channels)
 
-generated = 5902
+generated = 0
 
 for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
 
@@ -202,7 +203,9 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
         batch_size=run_mask.config["batch_size"],
         model=mask_model,
         device=device,
-        round_pred_x_0=run_mask.config["round_pred_x_0"])["masks"]
+        round_pred_x_0=(
+            run_mask.config["round_pred_x_0"]
+            if dataset == "wear" else False))["masks"]
 
     if dataset == "grain":
         sample_masks = torch.round(sample_masks)
