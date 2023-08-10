@@ -102,22 +102,22 @@ class GrainDataset(Dataset):
 
 
 # # DEBUG
-# grain_dataset = GrainDataset(
-#     "data/grains_txt", channel_names=["intensity", "depth"], image_idxs=[9],
-#     patch_size=256, img_size=(256, 256), mask_one_hot=False, train=True)
+grain_dataset = GrainDataset(
+    "data/grains_txt", channel_names=["intensity", "depth"], image_idxs=[9],
+    patch_size=256, img_size=(256, 256), mask_one_hot=False, train=True)
 
 
-# grain_dataloader = DataLoader(grain_dataset, batch_size=1)
+grain_dataloader = DataLoader(grain_dataset, batch_size=1)
 
-# for i, batch in enumerate(grain_dataloader):
+for i, batch in enumerate(grain_dataloader):
 
-#     low_res = down_upsample(batch["I"], 2)
+    # low_res = down_upsample(batch["I"], 2)
 
-#     fig, axes = plt.subplots(1, 3)
-#     # axes[0].imshow(batch["I"][0, 0], vmax=1, vmin=-1)
-#     # axes[1].imshow(batch["I"][0, 1], vmax=1, vmin=-1)
-#     # axes[2].imshow(batch["I"][0, 2], vmax=1, vmin=-1)
-#     axes[0].imshow(low_res[0, 0], vmax=1, vmin=-1)
-#     axes[1].imshow(low_res[0, 1], vmax=1, vmin=-1)
-#     axes[2].imshow(low_res[0, 2], vmax=1, vmin=-1)
-#     plt.show()
+    fig, axes = plt.subplots(1, 3)
+    axes[0].imshow(batch["I"][0, 0], vmax=1, vmin=-1)
+    axes[1].imshow(batch["I"][0, 1], vmax=1, vmin=-1)
+    axes[2].imshow(batch["I"][0, 2], vmax=1, vmin=-1)
+    # axes[0].imshow(low_res[0, 0], vmax=1, vmin=-1)
+    # axes[1].imshow(low_res[0, 1], vmax=1, vmin=-1)
+    # axes[2].imshow(low_res[0, 2], vmax=1, vmin=-1)
+    plt.show()
