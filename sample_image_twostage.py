@@ -227,12 +227,6 @@ for _ in range(math.ceil(num_samples / run_mask.config["batch_size"])):
         else:
             num_samples_images = run_image.config["batch_size"]
 
-    # if run_image.config["batch_size"] < n:
-    #     num_batches = n // run_image.config["batch_size"]
-    # else:
-    #     num_batches = 1
-
-    # for i in range(num_batches):
         sample_masks_batch = sample_masks_one_hot[
             generated_images:generated_images + num_samples_images]
         sample_images = image_diffusion.sample(

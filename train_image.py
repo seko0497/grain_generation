@@ -1,4 +1,3 @@
-from matplotlib import cm, pyplot as plt
 import numpy as np
 import torch
 import wandb
@@ -9,7 +8,6 @@ from train import train
 from losses import HybridLoss
 
 from dataset_grain import GrainDataset
-from dataset_wear import WearDataset
 from diffusion import Diffusion, get_schedule
 from ema import ExponentialMovingAverage
 
@@ -46,13 +44,6 @@ def main():
             config.get("grain_defaults")["patch_size"],
             config.get("img_size"),
             mask_one_hot=config.get("mask_one_hot"),)
-    elif config.get("dataset") == "wear":
-        dataset_train = WearDataset(
-            f"{config.get('wear_defaults')['root_dir']}/train",
-            config.get("wear_defaults")["raw_img_size"],
-            config.get("img_size"),
-            mask_one_hot=config.get("mask_one_hot"),
-            label_dist=config.get("condition") == "label_dist")
 
     # initialize validation dataset
     if config.get("dataset") == "grain":
@@ -64,13 +55,6 @@ def main():
             config.get("img_size"),
             mask_one_hot=config.get("mask_one_hot"),
             train=False)
-    elif config.get("dataset") == "wear":
-        dataset_validation = WearDataset(
-            f"{config.get('wear_defaults')['root_dir']}/test",
-            config.get("wear_defaults")["raw_img_size"],
-            config.get("img_size"),
-            mask_one_hot=config.get("mask_one_hot"),
-            label_dist=config.get("condition") == "label_dist")
 
     # initialize dataloader
     dataloader_kwargs = {
@@ -274,11 +258,6 @@ def main():
                 sample_masks = samples["masks"]
                 if config.get("round_masks"):
                     sample_masks = torch.round(sample_masks)
-
-                # sample_masks *= num_classes
-                # mask_pred[mask_pred == num_classes] = num_classes - 1.0
-                # mask_pred = mask_pred.int().float()
-                # mask_pred /= num_classes - 1.0
 
             # calculate label dists loss
             if "label_dists" in samples:

@@ -2,7 +2,6 @@ import torch.nn as nn
 import einops
 import torch
 import math
-from functools import partial
 
 
 class Unet(nn.Module):
@@ -378,13 +377,3 @@ class SuperResUnet(Unet):
 
         x = torch.cat((x, low_res), dim=1)
         return super().forward(x, t)
-
-# x = torch.empty((4, 3, 64, 64))
-
-# model = Unet(128, torch.device("cpu"), dim_mults=[1, 1, 2, 2, 4, 4],
-#              cond=True, num_classes=3)
-
-# map = torch.zeros((4, 3, 64, 64))
-
-# t = torch.full((4, ), 42)
-# model(x, t)

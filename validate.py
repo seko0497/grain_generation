@@ -1,13 +1,9 @@
-from collections import Counter
 import math
-from matplotlib import cm
-import numpy as np
 import torch
 from torchmetrics.image.fid import FrechetInceptionDistance
 from tqdm import tqdm
-
-from wear_generation.losses import HybridLoss
-from wear_generation.image_transforms import get_rgb, down_upsample
+from losses import HybridLoss
+from image_transforms import get_rgb, down_upsample
 
 
 class Validation():

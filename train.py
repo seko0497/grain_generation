@@ -1,7 +1,5 @@
-from matplotlib import pyplot as plt
 from tqdm import tqdm
 import torch
-
 from diffusion import Diffusion
 from image_transforms import down_upsample
 
