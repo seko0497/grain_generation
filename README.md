@@ -29,13 +29,9 @@ Therefore, another diffusion model is used to increase the resolution to 256 x 2
 &nbsp;
 <img src='figures\upsampling_grain.png' align="left">  
 &nbsp;
-
 ## Example Results
-
 &nbsp;
-<p align="center">
-<img src='figures\examples.png' align="ceter" width=400> 
-</p> 
+<img src='figures\examples.png'> 
 &nbsp;
 
 ## Scores
