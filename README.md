@@ -33,7 +33,9 @@ Therefore, another diffusion model is used to increase the resolution to 256 x 2
 ## Example Results
 
 &nbsp;
-<img src='figures\examples.png' align="left">  
+<p align="center">
+<img src='figures\examples.png' align="ceter" width=400> 
+</p> 
 &nbsp;
 
 ## Scores
